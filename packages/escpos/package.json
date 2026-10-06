@@ -1,0 +1,8 @@
+{
+  "name": "@pediu/escpos",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "check": "tsc -p . --noEmit", "test": "node --import tsx --test test/*.test.ts" }
+}

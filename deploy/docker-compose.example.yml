@@ -1,0 +1,26 @@
+# Exemplo de stack completa SEM Easypanel (uma VPS com Docker). No Easypanel, crie 3 serviços a partir do Dockerfile (veja docs/index.html).
+# O banco é o Supabase (externo): as 3 URLs de conexão vêm do .env.
+services:
+  api:
+    build: { context: .., target: api }
+    env_file: ../.env
+    environment: { PORT: 3000, PUBLIC_API_URL: "https://${API_HOST}", EDGE_SECRET: "${EDGE_SECRET}" }
+    volumes: [ "uploads:/data/uploads" ]     # só necessário se NÃO usar o Supabase Storage para as imagens
+    restart: unless-stopped
+  edge:
+    build: { context: .., target: edge }
+    environment: { PORT: 3200, API_URL: "http://api:3000", EDGE_SECRET: "${EDGE_SECRET}", RELEASES_BASE_URL: "${RELEASES_BASE_URL:-}" }
+    depends_on: [ api ]
+    restart: unless-stopped
+  mcp:
+    build: { context: .., target: mcp }
+    environment: { PORT: 3100, MCP_DATABASE_URL: "${MCP_DATABASE_URL}", BASE_DOMAIN: "${BASE_DOMAIN}" }   # só esta conexão: nunca as outras
+    restart: unless-stopped
+  caddy:
+    image: caddy:2
+    ports: [ "80:80", "443:443" ]
+    environment: { ACME_EMAIL: "${ACME_EMAIL}", API_HOST: "${API_HOST}", MCP_HOST: "${MCP_HOST}" }
+    volumes: [ "./Caddyfile:/etc/caddy/Caddyfile:ro", "caddy_data:/data" ]
+    depends_on: [ api, edge, mcp ]
+    restart: unless-stopped
+volumes: { uploads: {}, caddy_data: {} }

@@ -1,0 +1,32 @@
+# HTTPS automático para QUALQUER domínio de loja já verificado (Caddy "on-demand TLS").
+# O Caddy pergunta à API antes de emitir cada certificado: só domínios verificados passam (rota /v1/edge/tls-check).
+{
+	email {$ACME_EMAIL}
+	on_demand_tls {
+		ask http://api:3000/v1/edge/tls-check
+	}
+}
+
+# loja de qualquer domínio (padrão *.BASE_DOMAIN e domínios próprios) -> edge
+https:// {
+	tls {
+		on_demand
+	}
+	encode zstd gzip
+	reverse_proxy edge:3200 {
+		flush_interval -1          # mantém o stream em tempo real (SSE) sem buffer
+		header_up X-Forwarded-Host {host}
+	}
+}
+
+# a API e o super admin ficam num domínio próprio, fixo
+{$API_HOST} {
+	encode zstd gzip
+	reverse_proxy api:3000 {
+		flush_interval -1
+	}
+}
+
+{$MCP_HOST} {
+	reverse_proxy mcp:3100
+}

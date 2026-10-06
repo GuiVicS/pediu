@@ -1,0 +1,30 @@
+{
+  "name": "pediu",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc -b --noEmit false --emitDeclarationOnly false 2>&1 || true",
+    "check": "npm run check --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "dev:api": "npm run dev -w @pediu/api",
+    "dev:mcp": "npm run dev -w @pediu/mcp",
+    "dev:web": "npm run dev -w @pediu/web",
+    "dev:platform": "npm run dev -w @pediu/platform",
+    "dev:edge": "npm run dev -w @pediu/web-edge",
+    "build:ui": "npm run build -w @pediu/web && npm run build -w @pediu/platform",
+    "release:web": "node scripts/publish-web.mjs",
+    "agent:build": "npm run build -w @pediu/print-agent"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

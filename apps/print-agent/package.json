@@ -1,0 +1,15 @@
+{
+  "name": "@pediu/print-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "pediu-agent": "./dist/agent.mjs" },
+  "scripts": {
+    "start": "tsx src/cli.ts run",
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/agent.mjs --banner:js=\"#!/usr/bin/env node\"",
+    "check": "tsc -p . --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": { "ws": "^8.18.0" },
+  "devDependencies": { "@types/ws": "^8.5.13", "esbuild": "^0.25.0" }
+}

@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pediu — Assistente de instalação e operação</title>
+<style>
+  :root { --bg:#f6f8fb; --card:#fff; --fg:#0f172a; --mut:#64748b; --bd:#e2e8f0; --pri:#0091ff; --ok:#16a34a; --warn:#b45309; --code:#0b1220; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0b1220; --card:#111a2e; --fg:#e6edf7; --mut:#93a4bd; --bd:#22304d; --code:#050a14; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+  .app { display:grid; grid-template-columns: 290px 1fr; min-height:100vh; }
+  aside { border-right:1px solid var(--bd); background:var(--card); padding:18px 14px; position:sticky; top:0; height:100vh; overflow:auto; }
+  aside h1 { font-size:16px; margin:0 0 4px; } aside .sub { color:var(--mut); font-size:12px; margin-bottom:14px; }
+  .bar { height:8px; background:var(--bd); border-radius:99px; overflow:hidden; margin:8px 0 16px; } .bar i { display:block; height:100%; background:var(--ok); width:0; transition:width .3s; }
+  nav button { display:flex; gap:10px; align-items:center; width:100%; text-align:left; border:0; background:none; color:var(--fg); padding:8px 10px; border-radius:8px; cursor:pointer; font:inherit; }
+  nav button:hover { background:var(--bg); } nav button.on { background:color-mix(in srgb, var(--pri) 14%, transparent); font-weight:600; }
+  nav .n { flex:none; width:24px; height:24px; border-radius:50%; background:var(--bd); display:grid; place-items:center; font-size:12px; font-weight:700; }
+  nav button.done .n { background:var(--ok); color:#fff; }
+  nav .grp { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut); margin:14px 10px 4px; }
+  main { padding:28px clamp(16px,4vw,48px) 80px; max-width:920px; }
+  h2 { font-size:24px; margin:0 0 6px; } .lead { color:var(--mut); margin:0 0 20px; }
+  h3 { font-size:16px; margin:24px 0 8px; }
+  .card { background:var(--card); border:1px solid var(--bd); border-radius:12px; padding:16px 18px; margin:12px 0; }
+  .note, .warn, .ok { border-radius:10px; padding:10px 14px; margin:12px 0; font-size:14px; }
+  .note { background:color-mix(in srgb, var(--pri) 10%, transparent); border:1px solid color-mix(in srgb, var(--pri) 35%, transparent); }
+  .warn { background:color-mix(in srgb, #f59e0b 14%, transparent); border:1px solid color-mix(in srgb, #f59e0b 45%, transparent); }
+  .ok { background:color-mix(in srgb, var(--ok) 12%, transparent); border:1px solid color-mix(in srgb, var(--ok) 40%, transparent); }
+  .cmd { position:relative; margin:10px 0; } .cmd .lbl { font-size:12px; color:var(--mut); margin-bottom:4px; }
+  pre { margin:0; background:var(--code); color:#d6e2f5; padding:12px 74px 12px 14px; border-radius:10px; overflow:auto; font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; white-space:pre-wrap; word-break:break-word; }
+  .cp { position:absolute; right:8px; top:26px; border:1px solid #334766; background:#16233d; color:#cfe0ff; border-radius:6px; padding:3px 9px; font-size:12px; cursor:pointer; } .cp:hover { background:#1d2f52; }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; } th,td { text-align:left; padding:7px 9px; border-bottom:1px solid var(--bd); vertical-align:top; } th { color:var(--mut); font-weight:600; }
+  code.i { background:color-mix(in srgb, var(--mut) 18%, transparent); padding:1px 6px; border-radius:5px; font:12.5px ui-monospace,Menlo,monospace; }
+  .row { display:flex; gap:10px; margin-top:26px; align-items:center; flex-wrap:wrap; }
+  .btn { border:1px solid var(--bd); background:var(--card); color:var(--fg); border-radius:9px; padding:9px 16px; font:inherit; cursor:pointer; } .btn.pri { background:var(--pri); border-color:var(--pri); color:#fff; font-weight:600; }
+  .chk { display:flex; gap:8px; align-items:center; margin-left:auto; color:var(--mut); } .chk input { width:18px; height:18px; }
+  .states { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; } .st { border:1px solid var(--bd); border-radius:10px; padding:10px 12px; background:var(--card); }
+  .st > b:first-child { display:block; margin-bottom:2px; } .st.w { border-color:var(--ok); } .st.r { border-color:var(--warn); }
+  .tag { display:inline-block; font-size:11px; font-weight:700; border-radius:99px; padding:1px 8px; } .tag.ok { background:var(--ok); color:#fff; margin:0; padding:1px 8px; } .tag.no { background:var(--warn); color:#fff; }
+  @media (max-width: 800px) { .app { grid-template-columns:1fr; } aside { position:static; height:auto; border-right:0; border-bottom:1px solid var(--bd); } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>Pediu · Assistente</h1>
+    <div class="sub">Da instalação ao primeiro lojista</div>
+    <div class="bar"><i id="prog"></i></div>
+    <nav id="nav"></nav>
+  </aside>
+  <main id="main"></main>
+</div>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const cmd = (code, label) => `<div class="cmd">${label ? `<div class="lbl">${label}</div>` : ''}<pre>${esc(code.trim())}</pre><button class="cp" type="button">Copiar</button></div>`;
+const note = (t) => `<div class="note">${t}</div>`, warn = (t) => `<div class="warn">${t}</div>`, ok = (t) => `<div class="ok">${t}</div>`;
+const J = `-H 'content-type: application/json'`;
+
+const STEPS = [
+ { g:'Visão geral', t:'O que é e o que já existe', html: () => `
+  <p class="lead">Este repositório é a plataforma real (não-demo): multi-loja, com <b>telas completas</b>, impressão por zonas, pagamentos online, iFood, versão por loja, domínio próprio, super admin com autenticador e MCP para criar lojas. A demo continua intacta em <code class="i">/root/projetos/pediu-mvp</code>.</p>
+  <h3>O que existe</h3>
+  <table><tr><th>Peça</th><th>Onde</th></tr>
+   <tr><td><b>Loja online</b> (cardápio, adicionais, carrinho, checkout em dinheiro, Pix online com QR e cartão, acompanhamento em tempo real)</td><td><code class="i">apps/web</code></td></tr>
+   <tr><td><b>Painel do lojista</b> (dashboard, pedidos ao vivo com som, cardápio, aparência, banners, pagamentos, impressão, iFood, domínios, equipe) e apps de <b>PDV, garçom e entregador</b></td><td><code class="i">apps/web</code></td></tr>
+   <tr><td><b>Super admin</b> (lojas, publicações, desempenho, alertas, saúde, logs, auditoria, assinaturas Stripe, versões, iFood, tokens do MCP)</td><td><code class="i">apps/platform</code></td></tr>
+   <tr><td>API (tudo acima) e banco no Supabase com RLS</td><td><code class="i">apps/api</code>, <code class="i">packages/db</code></td></tr>
+   <tr><td><b>Agente de impressão</b> (Windows/Linux/Mac) e gerador de cupom ESC/POS</td><td><code class="i">apps/print-agent</code>, <code class="i">packages/escpos</code></td></tr>
+   <tr><td><b>Edge</b>: serve cada domínio com a versão do app fixada para aquela loja</td><td><code class="i">apps/web-edge</code></td></tr>
+   <tr><td>MCP: cria e personaliza lojas em desenvolvimento; só lê em produção</td><td><code class="i">apps/mcp</code></td></tr></table>
+  <h3>O que ainda falta (honestidade)</h3>
+  ${warn(`<b>Nada disso foi executado de ponta a ponta fora do computador de desenvolvimento.</b> Os testes automáticos antigos (banco, API, MCP) passavam antes desta fase; <b>esta fase foi escrita sem rodar testes</b>, a pedido — a lista do que testar está em <code class="i">docs/TESTES.md</code>. Só a compilação (tipos) e o build das telas foram conferidos. Também <b>não</b> foram testados contra serviços reais: Mercado Pago, Sicoob, iFood, Stripe, impressoras físicas, Supabase e Docker.`)}
+  ${warn(`Ainda não existem: nota fiscal (NFC-e), login por PIN em dispositivo pareado, cupons/descontos, rastreio do entregador no mapa, relatórios financeiros (DRE), agente de IA no atendimento, app Android para maquininha, e desfazer revisões do MCP.`)}
+  <h3>Como as peças se falam</h3>
+  ${cmd(`Você ──(senha + autenticador)──▶ API (role platform_api) ──▶ Supabase Postgres
+Agente de IA ──(token pmcp_…)──▶ MCP (role mcp_agent) ──▶ Supabase Postgres
+Lojista ──(login da equipe, role app_api)──▶ [a construir]
+Stripe ──(webhook assinado)──▶ API ──▶ assinaturas e régua de cobrança`)}` },
+
+ { g:'Instalação', t:'Pré-requisitos', html: () => `
+  <p class="lead">O que você precisa antes de começar.</p>
+  <div class="card"><ul>
+   <li><b>Node 22 ou superior</b> (<code class="i">node -v</code>).</li>
+   <li>Uma conta no <b>Supabase</b> (plano Free serve para testar; para clientes reais use o Pro, que tem backups diários).</li>
+   <li>Opcional agora, necessário para cobrar: conta <b>Stripe</b> (modo teste primeiro) e o <b>Stripe CLI</b> para testar webhooks localmente.</li>
+   <li>Opcional: <b>Claude Code</b> ou outro cliente MCP para usar o MCP.</li></ul></div>
+  ${note('Você disse que vai hospedar em outro lugar: nada aqui depende de VPS. Tudo roda na sua máquina apontando para o Supabase.')}` },
+
+ { g:'Instalação', t:'Criar o projeto no Supabase', html: () => `
+  <p class="lead">O banco fica no Supabase para os dados dos clientes sobreviverem a qualquer deploy.</p>
+  <ol>
+   <li>Em <b>supabase.com</b> crie um projeto. Escolha a região mais próxima (São Paulo) e <b>guarde a senha do banco</b>.</li>
+   <li>Abra <b>Project Settings → Database → Connection string</b> e copie o <b>Transaction pooler</b> (porta <code class="i">6543</code>). O formato é: <code class="i">postgresql://postgres.&lt;ref&gt;:SENHA@aws-0-&lt;regiao&gt;.pooler.supabase.com:6543/postgres</code>.</li>
+   <li>Anote o <b>ref</b> do projeto (a parte depois de <code class="i">postgres.</code>). Ele vira sufixo do usuário dos roles: <code class="i">app_api.&lt;ref&gt;</code>.</li></ol>
+  ${warn('Use sempre o pooler em modo transação (6543) na aplicação. O código já usa <code class="i">prepare: false</code>, que esse modo exige. A conexão direta (5432) só serve para aplicar migrations.')}` },
+
+ { g:'Instalação', t:'Aplicar as migrations', html: () => `
+  <p class="lead">Quatro migrations criam tabelas, roles e políticas RLS. Elas ainda não foram aplicadas em lugar nenhum.</p>
+  <h3>Opção A — Supabase CLI</h3>
+  ${cmd(`cd packages/db
+supabase link --project-ref SEU_REF
+supabase db push`, 'Dentro de /root/projetos/pediu')}
+  <h3>Opção B — SQL Editor (sem instalar nada)</h3>
+  <p>No painel do Supabase, abra <b>SQL Editor</b> e execute, <b>nesta ordem</b>, o conteúdo de:</p>
+  ${cmd(`packages/db/supabase/migrations/20261007000001_core.sql
+packages/db/supabase/migrations/20261007000002_catalog.sql
+packages/db/supabase/migrations/20261008000001_orders_staff.sql
+packages/db/supabase/migrations/20261008000002_observability.sql`)}
+  <h3>Defina as senhas dos 3 roles</h3>
+  <p>As migrations criam os roles <b>sem senha</b> (segredo nunca fica no repositório). Escolha 3 senhas fortes e diferentes:</p>
+  ${cmd(`alter role app_api      with password 'SENHA_FORTE_1';
+alter role platform_api with password 'SENHA_FORTE_2';
+alter role mcp_agent    with password 'SENHA_FORTE_3';`, 'No SQL Editor')}
+  <h3>Confira o isolamento no banco real</h3>
+  <p>Rode <code class="i">rls_lock.sql</code> e <code class="i">rls_orders.sql</code> (em <code class="i">packages/db/supabase/tests/</code>) no SQL Editor <b>de um branch ou projeto de teste</b>. Eles terminam em ROLLBACK e devem mostrar <code class="i">… todos os testes passaram</code>. Se algum teste falhar, <b>pare aqui</b>: a trava de segurança não está valendo.</p>
+  ${warn('Ponto não verificado: o login dos roles pelo pooler do Supabase (usuário <code class="i">role.ref</code>) e o <code class="i">grant … to postgres</code> da migration foram escritos conforme a documentação, mas só o seu projeto real confirma. Se a migration reclamar de permissão, me mande a mensagem.')}` },
+
+ { g:'Instalação', t:'Configurar o .env', html: () => `
+  <p class="lead">Um arquivo <code class="i">.env</code> na raiz, nunca versionado.</p>
+  ${cmd(`cp .env.example .env`)}
+  <p>Preencha:</p>
+  <table><tr><th>Variável</th><th>Valor</th></tr>
+   <tr><td><code class="i">APP_DATABASE_URL</code></td><td>pooler com usuário <code class="i">app_api.&lt;ref&gt;</code> e a senha 1</td></tr>
+   <tr><td><code class="i">PLATFORM_DATABASE_URL</code></td><td>pooler com usuário <code class="i">platform_api.&lt;ref&gt;</code> e a senha 2</td></tr>
+   <tr><td><code class="i">MCP_DATABASE_URL</code></td><td>pooler com usuário <code class="i">mcp_agent.&lt;ref&gt;</code> e a senha 3</td></tr>
+   <tr><td><code class="i">SECRETS_KEYS</code></td><td>chave do cofre (gere abaixo)</td></tr>
+   <tr><td><code class="i">COOKIE_SECURE</code></td><td><b>false</b> enquanto estiver testando em http local; <b>true</b> em produção</td></tr>
+   <tr><td><code class="i">BASE_DOMAIN</code></td><td>domínio base dos subdomínios das lojas</td></tr>
+   <tr><td><code class="i">ALERT_WEBHOOK_URL</code></td><td><i>opcional</i> — para onde enviar os alertas (Slack, n8n, Make…). Veja o passo "Alertas"</td></tr></table>
+  ${cmd(`node -e "console.log('k1:'+require('crypto').randomBytes(32).toString('base64'))"`, 'Gerar a chave do cofre (SECRETS_KEYS)')}
+  ${warn('<b>Guarde a SECRETS_KEYS em um cofre de senhas.</b> Ela cifra o segredo do autenticador e as chaves do Stripe. Se for perdida, esses dados não podem ser recuperados. Para trocar a chave no futuro, coloque a nova na frente e mantenha a antiga: <code class="i">k2:…,k1:…</code> (a primeira cifra, todas decifram).')}
+  ${note('O MCP usa <b>somente</b> <code class="i">MCP_DATABASE_URL</code>. Ao hospedar, não passe as outras duas conexões para o serviço do MCP.')}` },
+
+ { g:'Instalação', t:'Instalar e testar', html: () => `
+  <p class="lead">Confirme que tudo funciona na sua máquina antes de mexer em dados reais.</p>
+  ${cmd(`npm install --include=dev
+npm run check
+npm test`)}
+  ${ok('Antes da fase de telas/impressão/pagamentos, a suíte tinha <b>24 + 53 + 14 testes</b> e 2 testes SQL, todos passando. <b>Depois dela a suíte não foi rodada</b> (a pedido): rode agora e veja a lista do que ainda precisa de teste em <code class="i">docs/TESTES.md</code>. Os testes usam um Postgres em memória: não tocam no seu Supabase.')}
+  ${note('Se <code class="i">NODE_ENV=production</code> estiver definido no seu terminal, o <code class="i">--include=dev</code> é indispensável (o <code class="i">tsx</code> e o TypeScript são dependências de desenvolvimento).')}` },
+
+ { g:'Super admin', t:'Criar seu usuário', html: () => `
+  <p class="lead">O primeiro super admin é criado por linha de comando — não existe cadastro público.</p>
+  ${cmd(`ADMIN_PASSWORD='uma-senha-longa-com-12+-caracteres' \\
+  npm run create-admin -w @pediu/api -- voce@empresa.com "Seu Nome"`)}
+  <p>A senha vem de variável de ambiente (não de argumento) para não ficar no histórico do terminal. Rodar de novo com o mesmo e-mail <b>redefine a senha</b> e destrava a conta.</p>
+  ${note('Neste momento o usuário ainda <b>não consegue operar nada</b>: falta cadastrar o autenticador no primeiro login (próximo passos).')}` },
+
+ { g:'Super admin', t:'Subir a API e entrar com o autenticador', html: () => `
+  <p class="lead">Login em dois fatores. Sem o código do app, a sessão não abre nada.</p>
+  ${cmd(`npm run dev:api`, 'Terminal 1')}
+  <p>Nos exemplos usamos <code class="i">curl</code> com um arquivo de cookies (<code class="i">jar</code>). Quando as telas do super admin existirem, elas fazem exatamente estas chamadas.</p>
+  ${cmd(`curl -s -c jar -b jar ${J} localhost:3000/v1/platform/auth/login \\
+  -d '{"email":"voce@empresa.com","password":"SUA_SENHA"}'
+# → {"next":"enroll"}   (1º acesso)   ou   {"next":"totp"}`, '1. Senha')}
+  ${cmd(`curl -s -c jar -b jar -X POST ${J} localhost:3000/v1/platform/auth/totp/enroll -d '{}'
+# → {"secret":"ABCD…","otpauthUrl":"otpauth://totp/…"}`, '2. Gerar o segredo (só no 1º acesso)')}
+  <p>Cadastre no seu app autenticador (Google Authenticator, Authy, 1Password…) digitando o <code class="i">secret</code> ou transformando o <code class="i">otpauthUrl</code> em QR Code.</p>
+  ${cmd(`curl -s -c jar -b jar -X POST ${J} localhost:3000/v1/platform/auth/totp/confirm -d '{"code":"123456"}'
+# → {"recoveryCodes":["a1b2c-3d4e5", … 10 códigos]}`, '3. Confirmar com o 1º código')}
+  ${warn('<b>Os 10 códigos de recuperação aparecem uma única vez.</b> Guarde-os fora do computador. Cada um vale uma vez e substitui o app caso você perca o celular.')}
+  <h3>Nos logins seguintes</h3>
+  ${cmd(`curl -s -c jar -b jar ${J} localhost:3000/v1/platform/auth/login -d '{"email":"voce@empresa.com","password":"SUA_SENHA"}'
+curl -s -c jar -b jar ${J} localhost:3000/v1/platform/auth/totp/verify -d '{"code":"123456"}'`)}
+  <h3>Regras de segurança já ativas</h3>
+  <ul><li>5 erros (senha ou código) bloqueiam a conta por 15 minutos.</li><li>O mesmo código não vale duas vezes (anti-replay) — se o app mostrar o mesmo número, aguarde o próximo.</li><li>Sessão: 8 h no máximo e 30 min de inatividade; cookie <code class="i">HttpOnly</code> + <code class="i">SameSite=Strict</code>.</li><li>Toda ação fica em <code class="i">audit_logs</code>.</li></ul>` },
+
+ { g:'Super admin', t:'Confirmação extra (step-up)', html: () => `
+  <p class="lead">Ações sensíveis pedem o código de novo, mesmo com a sessão aberta. A confirmação vale 5 minutos.</p>
+  <table><tr><th>Exigem step-up</th></tr>
+   <tr><td>Criar ou revogar token do MCP</td></tr><tr><td>Mudar o status de uma loja (publicar, voltar, suspender, arquivar)</td></tr>
+   <tr><td>Aprovar ou recusar publicação pedida pelo MCP</td></tr><tr><td>Gravar chaves do Stripe e criar/alterar planos</td></tr></table>
+  ${cmd(`curl -s -c jar -b jar -X POST ${J} localhost:3000/v1/platform/auth/stepup -d '{"code":"654321"}'
+# → {"ok":true,"until":"2026-…"}`, 'Reconfirmar')}
+  ${note('Como o mesmo código não pode ser usado duas vezes, se você acabou de entrar com ele, <b>espere o app trocar de código</b> (30 s) antes do step-up. É esperado.')}` },
+
+ { g:'MCP', t:'Criar o token do MCP', html: () => `
+  <p class="lead">O MCP é como um agente de IA monta lojas inteiras. Ele só entra com um token que você cria aqui.</p>
+  ${cmd(`# faça o step-up antes (passo anterior)
+curl -s -c jar -b jar -X POST ${J} localhost:3000/v1/platform/mcp-tokens \\
+  -d '{"name":"Claude Desktop","expiresInDays":90}'
+# → {"id":"…","token":"pmcp_…","expiresAt":"…"}`)}
+  ${warn('O token <b>aparece só agora</b>. O banco guarda apenas o hash. Para limitar o token a lojas específicas, envie <code class="i">"storeIds":["uuid",…]</code> — esse token também não consegue criar lojas novas.')}
+  <p>Para revogar: <code class="i">DELETE /v1/platform/mcp-tokens/:id</code> (com step-up). Vale na hora. Veja o último uso e o IP em <code class="i">GET /v1/platform/mcp-tokens</code>.</p>` },
+
+ { g:'MCP', t:'Subir o MCP e conectar o Claude', html: () => `
+  <p class="lead">Um serviço separado, que só conhece a conexão do role <code class="i">mcp_agent</code>.</p>
+  ${cmd(`npm run dev:mcp`, 'Terminal 2')}
+  ${cmd(`claude mcp add --transport http pediu http://localhost:3100/mcp \\
+  --header "Authorization: Bearer pmcp_SEU_TOKEN"`, 'Conectar no Claude Code')}
+  <p>Em outros clientes, use a URL <code class="i">http://localhost:3100/mcp</code> com o cabeçalho <code class="i">Authorization: Bearer pmcp_…</code>.</p>
+  <h3>Limites do servidor</h3>
+  <ul><li>120 requisições por minuto por token.</li><li>Corpo de até 5 MB (importação de cardápio grande).</li><li>Navegadores só entram com origem liberada em <code class="i">MCP_ALLOWED_ORIGINS</code>.</li></ul>` },
+
+ { g:'MCP', t:'Status da loja: o que o MCP pode', html: () => `
+  <p class="lead">A regra mais importante do sistema.</p>
+  <div class="states">
+   <div class="st w"><b>desenvolvimento</b>O MCP faz <b>tudo</b>: tema completo, cardápio, adicionais, banners, zonas, formas de pagamento (liga/desliga), importação em lote.</div>
+   <div class="st r"><b>producao</b>O MCP só <b>lê</b>: lista de lojas e assinaturas. Nenhuma escrita.</div>
+   <div class="st r"><b>suspensa</b>Só leitura. Vem da régua de cobrança.</div>
+   <div class="st"><b>arquivada</b>O MCP nem enxerga.</div></div>
+  <h3>Quem muda o status</h3>
+  <ul><li><b>O MCP nunca muda.</b> Ele só chama <code class="i">solicitar_publicacao</code>, que roda o checklist e abre um pedido.</li>
+   <li><b>Você aprova</b> no super admin, com autenticador. Publicar exige assinatura ativa/trial, ou uma justificativa de cortesia.</li>
+   <li>Voltar uma loja que está no ar para desenvolvimento exige justificativa.</li></ul>
+  <h3>Como a trava funciona (2 camadas)</h3>
+  <ol><li><b>Serviço:</b> toda escrita trava a linha da loja (<code class="i">FOR UPDATE</code>) e confere o status <i>dentro</i> da transação — uma publicação simultânea não deixa a escrita passar.</li>
+   <li><b>Banco (RLS):</b> mesmo com SQL direto como <code class="i">mcp_agent</code>, inserir/alterar/apagar em loja que não está em desenvolvimento falha. O role não tem permissão na coluna <code class="i">status</code> nem acesso a tokens, admins ou chaves.</li></ol>
+  ${ok('Provado por teste: as 18 ferramentas de escrita (22 chamadas, incluindo criar e atualizar) são bloqueadas em produção e o banco permanece idêntico; SQL direto também é barrado.')}
+  <p>Fora do alcance do MCP em qualquer status: credenciais de gateways, usuários do super admin, tokens, configuração do Stripe, exclusão de loja e dados de clientes finais.</p>` },
+
+ { g:'MCP', t:'Criar uma loja pelo MCP', html: () => `
+  <p class="lead">Exemplo de conversa com o agente já conectado.</p>
+  ${cmd(`Crie a loja "Forno & Fogo Pizzaria" (slug forno-fogo) para a conta "Forno & Fogo".
+Use o vermelho #E53935 como cor principal e fonte Poppins, coloque o logo https://…/logo.png,
+cadastre horário de terça a domingo das 18h às 23h30, pedido mínimo R$ 25,
+importe o cardápio abaixo, crie a zona de entrega Centro (R$ 6, 35 min), a zona de impressão
+Cozinha e as formas de pagamento Pix e Dinheiro. Depois valide a loja.`)}
+  <h3>Ferramentas disponíveis</h3>
+  <table><tr><th>Leitura (qualquer status)</th><th>Escrita (só desenvolvimento)</th></tr>
+   <tr><td><code class="i">listar_lojas</code>, <code class="i">ver_loja</code>, <code class="i">validar_loja</code>, <code class="i">listar_assinaturas</code></td>
+   <td><code class="i">criar_loja</code>, <code class="i">atualizar_loja</code>, <code class="i">atualizar_tema</code>, <code class="i">salvar_/remover_categoria</code>, <code class="i">salvar_/remover_produto</code>, <code class="i">salvar_/remover_grupo_adicionais</code>, <code class="i">salvar_/remover_banner</code>, <code class="i">salvar_/remover_zona_entrega</code>, <code class="i">salvar_/remover_zona_impressao</code>, <code class="i">salvar_/remover_forma_pagamento</code>, <code class="i">importar_cardapio</code>, <code class="i">solicitar_publicacao</code></td></tr></table>
+  <h3>Comportamentos úteis</h3>
+  <ul><li><b>Atualização parcial:</b> ao editar (com <code class="i">id</code>), só muda o que foi enviado; foto, descrição e adicionais não são zerados.</li>
+   <li><b>Importação segura:</b> <code class="i">dryRun</code> só confere; <code class="i">substituir</code> apaga o cardápio e exige <code class="i">confirmarSubstituicao</code>.</li>
+   <li><b>Remover categoria</b> com produtos exige <code class="i">confirmar=true</code>.</li>
+   <li>Toda alteração gera uma <b>revisão</b> (<code class="i">store_config_revisions</code>) e um registro de auditoria. Veja em <code class="i">GET /v1/platform/stores/:id/revisions</code>. <i>Desfazer pela API ainda não está implementado.</i></li>
+   <li>Imagens: o MCP recebe <b>URLs</b>. Envio de arquivo (Supabase Storage) ainda não existe.</li></ul>` },
+
+ { g:'Publicar', t:'Aprovar a publicação', html: () => `
+  <p class="lead">Quando o agente chama <code class="i">solicitar_publicacao</code>, nasce um pedido pendente.</p>
+  ${cmd(`curl -s -b jar localhost:3000/v1/platform/publication-requests`, 'Ver os pedidos')}
+  ${cmd(`# faça o step-up e então:
+curl -s -b jar -X POST ${J} localhost:3000/v1/platform/publication-requests/ID_DO_PEDIDO/decide \\
+  -d '{"approve":true}'                                   # loja com assinatura ativa/trial
+curl -s -b jar -X POST ${J} localhost:3000/v1/platform/publication-requests/ID_DO_PEDIDO/decide \\
+  -d '{"approve":true,"waiverReason":"parceiro piloto"}'   # cortesia, sem assinatura`, 'Aprovar')}
+  <p>Para recusar: <code class="i">{"approve":false}</code>. Para mudar o status direto: <code class="i">POST /v1/platform/stores/:id/status</code> com <code class="i">{"to":"producao","waiverReason":"…"}</code>.</p>
+  ${note('Também dá para criar lojas pelo super admin, sem o MCP: <code class="i">POST /v1/platform/stores</code> com <code class="i">slug</code>, <code class="i">name</code> e <code class="i">tenantName</code> (ou <code class="i">tenantId</code>). Elas nascem em desenvolvimento, com o subdomínio <code class="i">slug.BASE_DOMAIN</code>.')}` },
+
+ { g:'Operação das lojas', t:'Equipe da loja e login', html: () => `
+  <p class="lead">Cada loja tem a própria equipe, com os 6 perfis. O login é por <b>e-mail e senha</b> no endereço da loja.</p>
+  <h3>1. Você cria o primeiro administrador da loja</h3>
+  <p>Sem ele ninguém consegue entrar. Exige o código do autenticador reconfirmado (step-up). Rodar de novo para o mesmo e-mail <b>redefine a senha do dono</b> e derruba as sessões abertas dele.</p>
+  ${cmd(`curl -s -b jar -X POST ${J} localhost:3000/v1/platform/stores/ID_DA_LOJA/admin-user \\
+  -d '{"name":"Dona da Loja","email":"dona@loja.com","password":"senha-inicial-segura"}'
+# → 201 {"id":"…","created":true}   (200 se for redefinição)`)}
+  <h3>2. O administrador entra e monta a equipe</h3>
+  ${cmd(`curl -s -c sjar ${J} localhost:3000/v1/staff/login \\
+  -d '{"store":"slug-da-loja","email":"dona@loja.com","password":"senha-inicial-segura"}'
+curl -s -b sjar localhost:3000/v1/staff/users
+curl -s -b sjar -X POST ${J} localhost:3000/v1/staff/users \\
+  -d '{"name":"João","email":"joao@loja.com","role":"garcom","password":"uma-senha-longa-123"}'`)}
+  <table><tr><th>Perfil</th><th>Faz</th></tr>
+   <tr><td><b>admin</b></td><td>tudo, inclusive equipe</td></tr>
+   <tr><td><b>gerente</b></td><td>PDV, mesas, entregas, cancelar, estornar, painel (sem equipe)</td></tr>
+   <tr><td><b>suporte</b></td><td>PDV, mesas, entregas, cancelar, dashboard e pedidos</td></tr>
+   <tr><td><b>balcao</b></td><td>vender e receber no PDV (não cancela)</td></tr>
+   <tr><td><b>garcom</b></td><td>mesas e comandas (não recebe, não cancela)</td></tr>
+   <tr><td><b>entregador</b></td><td>só entregas: assume, conclui (não cancela)</td></tr></table>
+  <h3>Regras de segurança já ativas</h3>
+  <ul><li>5 erros bloqueiam por 15 min; e-mail inexistente, senha errada e loja inexistente respondem <b>igual</b> (não revela quem existe).</li>
+   <li>Sessão de 12 h, e 2 h de inatividade; cookie <code class="i">HttpOnly</code> + <code class="i">SameSite=Strict</code>.</li>
+   <li>Senhas e PINs só existem como hash. Desativar uma pessoa ou trocar a senha <b>derruba as sessões abertas</b>.</li>
+   <li>Só administrador cria ou altera administrador, e a loja nunca fica sem um administrador ativo.</li>
+   <li>A conta da pessoa vem sempre da sessão, nunca do pedido: o admin da loja A não enxerga nem edita a equipe da loja B.</li></ul>
+  ${warn('<b>Ainda não existe login por PIN.</b> O PIN é gravado (com hash) ao criar o usuário, mas só o login por senha funciona. O PIN rápido em dispositivo pareado (PDV/tablet) fica para quando o Print Agent e o pareamento de dispositivos existirem.')}` },
+
+ { g:'Operação das lojas', t:'Pedidos: loja, PDV, garçom e entregador', html: () => `
+  <p class="lead">Pedidos reais, com <b>preço sempre calculado no servidor</b>: do navegador só chegam ids e quantidades.</p>
+  <h3>Loja online (público, sem login)</h3>
+  <table><tr><th>Rota</th><th>Faz</th></tr>
+   <tr><td><code class="i">GET /v1/store/:slug</code> · <code class="i">…/menu</code></td><td>dados, tema, aberto/fechado e cardápio completo</td></tr>
+   <tr><td><code class="i">POST /v1/store/:slug/orders</code></td><td>faz o pedido (entrega ou retirada)</td></tr>
+   <tr><td><code class="i">GET /v1/track/:token</code></td><td>acompanhar pelo link (sem telefone nem endereço)</td></tr></table>
+  ${cmd(`curl -s ${J} localhost:3000/v1/store/slug-da-loja/orders -d '{
+  "type":"delivery","customerName":"João Souza","phone":"16988887777",
+  "address":"Rua das Flores, 10","zoneId":"UUID_DA_REGIAO","paymentId":"UUID_DA_FORMA",
+  "lines":[{"productId":"UUID","qty":2,"addons":[{"groupId":"UUID","addonIds":["UUID"]}]}]}'
+# → {"number":1001,"totalCents":12180,"trackingToken":"…"}`)}
+  <p>O servidor confere: loja <b>no ar</b>, <b>horário de funcionamento</b> (no fuso da loja), pedido mínimo, cada produto e adicional <b>da própria loja</b> (mínimo/máximo do grupo incluídos), região, forma de pagamento e troco. Rascunho, loja suspensa ou arquivada respondem como inexistentes.</p>
+  <h3>Equipe (com login)</h3>
+  <table><tr><th>Rota</th><th>Quem</th></tr>
+   <tr><td><code class="i">GET /v1/staff/orders?open=1</code></td><td>cada perfil só vê o que cabe a ele (garçom: mesas; entregador: entregas prontas ou suas)</td></tr>
+   <tr><td><code class="i">POST /v1/staff/orders</code></td><td>PDV (balcão ou entrega, com <code class="i">receiveNow</code> para já receber) e garçom (mesa)</td></tr>
+   <tr><td><code class="i">POST …/:id/items</code></td><td>garçom/PDV adicionam itens à comanda da mesa (volta para a cozinha)</td></tr>
+   <tr><td><code class="i">POST …/:id/status</code></td><td>avançar, entregar ou cancelar (cancelar exige motivo e perfil com permissão)</td></tr>
+   <tr><td><code class="i">POST …/:id/pay</code></td><td>receber (só PDV); em mesa, receber encerra a comanda</td></tr>
+   <tr><td><code class="i">GET …/:id/events</code></td><td>linha do tempo do pedido</td></tr></table>
+  <h3>Fluxo e regras</h3>
+  <p><b>novo → preparo → pronto → (saiu, só entrega) → entregue</b>; cancelar vale até entregar. Não pula etapas. O entregador só assume (pronto→saiu) e conclui a <b>própria</b> entrega: outro entregador recebe <code class="i">taken</code>. Uma mesa tem no máximo <b>uma comanda aberta</b>. O número do pedido é sequencial por loja, começando em 1001. Itens e eventos são <b>imutáveis</b> depois de gravados.</p>
+  ${note('Cada item já grava a <b>zona de impressão</b> da categoria. Isso é a base para o Print Agent, que ainda não existe.')}` },
+
+ { g:'Super admin: monitoramento', t:'Desempenho por loja e da plataforma', html: () => `
+  <p class="lead">Tudo em <code class="i">/v1/platform/analytics</code> e <code class="i">/health</code>. Só leitura: basta a sessão com autenticador, sem step-up.</p>
+  <h3>Definições (para os números baterem com a sua conta)</h3>
+  <ul><li><b>Faturamento</b> = pedidos não cancelados. <b>Ticket médio</b> = faturamento ÷ pedidos válidos. <b>Cancelamento</b> = cancelados ÷ todos.</li>
+   <li><b>Aceite</b> = criado → aceito. <b>Preparo</b> = aceito → pronto. <b>Entrega</b> = criado → entregue (só delivery).</li>
+   <li>Variação contra o período anterior de mesmo tamanho; se não havia nada antes, vem <code class="i">null</code> (não "infinito").</li></ul>
+  <table><tr><th>Rota</th><th>Mostra</th></tr>
+   <tr><td><code class="i">GET /analytics/overview?days=7</code></td><td>lojas por status, pedidos, faturamento, ticket, cancelamento, <b>MRR</b>, assinaturas em atraso, alertas abertos, publicações pendentes</td></tr>
+   <tr><td><code class="i">GET /analytics/stores?days=7</code></td><td><b>ranking</b> das lojas por faturamento, com variação e alertas abertos de cada uma</td></tr>
+   <tr><td><code class="i">GET /analytics/stores/:id?days=7</code></td><td>detalhe: série por dia, <b>por hora</b>, canal, forma de pagamento, <b>mais vendidos</b>, motivos de cancelamento, tempos, e a saúde da API daquela loja (erros e p95)</td></tr>
+   <tr><td><code class="i">GET /health?minutes=60</code></td><td>requisições, <b>taxa de erro 5xx</b>, <b>p95 de latência</b>, série por minuto, rotas mais lentas e que mais erram, webhooks parados</td></tr></table>
+  <h3>Como as métricas são coletadas</h3>
+  <p>Cada requisição é contada por <b>rota</b> (nunca pela URL, para não guardar ids e tokens), agregada por minuto na memória e gravada em lote a cada 10 s num histograma de latência (≤50, 100, 250, 500, 1000, 2500 ms e acima). O p95 é o limite superior da faixa que contém o percentil — uma estimativa em faixas, não o valor exato.</p>
+  ${warn('Se o banco estiver fora do ar, o lote é <b>descartado</b> (a requisição nunca falha por causa da telemetria). O contador <code class="i">telemetryDropped</code> em <code class="i">/health</code> mostra quanto se perdeu; deve ficar em 0.')}` },
+
+ { g:'Super admin: monitoramento', t:'Alertas', html: () => `
+  <p class="lead">O sistema avalia as regras <b>a cada minuto</b>, abre o alerta, atualiza enquanto o problema continua e <b>resolve sozinho</b> quando ele passa.</p>
+  <table><tr><th>Regra</th><th>Dispara quando…</th><th>Padrão</th></tr>
+   <tr><td><code class="i">store.no_orders</code></td><td>loja no ar que vendia ficou sem pedidos</td><td>24 h sem pedido, tendo ≥ 5 nos 7 dias anteriores</td></tr>
+   <tr><td><code class="i">store.cancel_rate</code></td><td>cancelamentos acima do limite</td><td>&gt; 20% com ≥ 10 pedidos em 24 h</td></tr>
+   <tr><td><code class="i">store.slow_prep</code></td><td>preparo médio lento</td><td>&gt; 45 min com ≥ 5 pedidos em 24 h</td></tr>
+   <tr><td><code class="i">store.order_stuck</code> <span class="tag no">crítico</span></td><td>pedido novo sem aceite</td><td>&gt; 10 min</td></tr>
+   <tr><td><code class="i">platform.api_errors</code> <span class="tag no">crítico</span></td><td>erros 5xx em excesso</td><td>&gt; 2% com ≥ 50 req em 5 min</td></tr>
+   <tr><td><code class="i">platform.api_latency</code></td><td>API lenta</td><td>p95 &gt; 1500 ms com ≥ 50 req em 5 min</td></tr>
+   <tr><td><code class="i">platform.webhook_stuck</code></td><td>webhook recebido e não processado</td><td>&gt; 10 min</td></tr>
+   <tr><td><code class="i">security.auth_failures</code> <span class="tag no">crítico</span></td><td>muitas falhas de login</td><td>≥ 10 em 10 min</td></tr>
+   <tr><td><code class="i">billing.past_due</code></td><td>conta com pagamento em atraso</td><td>—</td></tr>
+   <tr><td><code class="i">mcp.token_expiring</code></td><td>token do MCP perto de vencer</td><td>7 dias</td></tr></table>
+  ${cmd(`curl -s -b jar "localhost:3000/v1/platform/alerts?status=active"
+curl -s -b jar -X POST localhost:3000/v1/platform/alerts/ID/ack       # reconhecer (continua visível)
+curl -s -b jar -X POST localhost:3000/v1/platform/alerts/ID/resolve   # resolver manualmente
+curl -s -b jar -X POST localhost:3000/v1/platform/alerts/evaluate     # rodar agora
+curl -s -b jar localhost:3000/v1/platform/alert-rules`)}
+  <h3>Ajustar as regras</h3>
+  ${cmd(`curl -s -b jar -X PUT ${J} localhost:3000/v1/platform/alert-rules/store.cancel_rate \\
+  -d '{"params":{"max_rate":0.3,"min_orders":20},"severity":"critical","cooldownMin":180}'
+# "enabled":false desativa e resolve o que estava aberto`)}
+  <p>Só aceita parâmetros que a regra conhece (erro 422 com a lista válida) e cada alteração fica no log de auditoria; tentativas recusadas não geram registro.</p>
+  <h3>Receber fora do painel</h3>
+  <p>Defina <code class="i">ALERT_WEBHOOK_URL</code> (Slack, n8n, Make…). O envio é um <code class="i">POST</code> com <code class="i">{"text":"🔴 [critical] …","alert":{…}}</code>. <b>Cada alerta avisa uma vez por intervalo</b> (<code class="i">cooldownMin</code>, 60 a 1440 min conforme a regra) em vez de a cada minuto. Se o envio falhar, o alerta fica pendente e tenta de novo no ciclo seguinte.</p>
+  ${note('Para Discord, termine a URL do webhook com <code class="i">/slack</code>. E-mail e WhatsApp ainda não estão ligados: use n8n/Make no webhook para isso.')}` },
+
+ { g:'Super admin: monitoramento', t:'Logs e auditoria', html: () => `
+  <p class="lead">Três visões, para quando alguém pergunta "o que aconteceu?".</p>
+  <table><tr><th>Rota</th><th>O que é</th></tr>
+   <tr><td><code class="i">GET /logs</code></td><td><b>logs técnicos</b> filtráveis: <code class="i">store, level, service, event, q</code> (texto), <code class="i">from, to</code>; paginado por <code class="i">before</code></td></tr>
+   <tr><td><code class="i">GET /stores/:id/activity</code></td><td><b>por loja</b>: logs + auditoria + eventos de pedido numa só linha do tempo (<code class="i">sources=logs,audit,orders</code>)</td></tr>
+   <tr><td><code class="i">GET /audit</code></td><td><b>do super admin</b>: quem fez o quê e quando, com o e-mail e o IP; filtros <code class="i">actor, action</code> (prefixo, ex.: <code class="i">auth.</code>), <code class="i">store, from, to</code></td></tr></table>
+  ${cmd(`curl -s -b jar "localhost:3000/v1/platform/logs?level=error&store=ID&limit=50"
+curl -s -b jar "localhost:3000/v1/platform/stores/ID/activity?limit=100"
+curl -s -b jar "localhost:3000/v1/platform/audit?actor=superadmin&action=auth."`)}
+  <h3>O que é registrado</h3>
+  <ul><li><b>Auditoria</b> (nunca apagada pela retenção): logins e falhas, step-up, criação de loja/token/usuário, mudança de status, decisões de publicação, planos e chaves do Stripe, cancelamento de pedido, alteração de regra de alerta, tudo que o MCP faz.</li>
+   <li><b>Logs técnicos</b>: toda resposta 5xx e todo acesso negado (401/403/423), com a rota, o status e o id da requisição.</li>
+   <li><b>Máscara automática</b>: campos com nome parecido com senha, token, segredo, PIN, cartão, CPF/CNPJ aparecem como <code class="i">[oculto]</code>. Provado por teste que os valores não chegam ao banco.</li></ul>
+  <h3>Retenção (1 vez por dia)</h3>
+  <p>Logs técnicos: <b>30 dias</b>. Métricas por minuto: <b>90 dias</b>. Alertas já resolvidos: <b>90 dias</b>. A auditoria e os eventos de pedido ficam.</p>
+  ${warn('A busca de texto nos logs usa <code class="i">ILIKE</code>: serve para o volume de uma operação pequena/média. Com muito volume, ela precisa de índice próprio ou de uma ferramenta de logs.')}` },
+
+ { g:'Telas', t:'As telas e como abri-las', html: () => `
+  <p class="lead">Três apps de tela, todos servidos pelo mesmo endereço da loja (ou da API, no caso do super admin).</p>
+  <table><tr><th>Quem</th><th>Endereço</th><th>Login</th></tr>
+   <tr><td>Cliente</td><td><code class="i">https://loja.seudominio.com.br/</code></td><td>nenhum</td></tr>
+   <tr><td>Lojista e equipe</td><td><code class="i">/entrar</code> → <code class="i">/painel</code>, <code class="i">/pdv</code>, <code class="i">/garcom</code>, <code class="i">/entregador</code></td><td>e-mail e senha da equipe (cada perfil só vê o que pode)</td></tr>
+   <tr><td>Você (super admin)</td><td><code class="i">https://api.seudominio.com.br/</code></td><td>senha + autenticador</td></tr></table>
+  <h3>Em desenvolvimento no seu computador</h3>
+  ${cmd(`npm run dev:api        # API na porta 3000
+npm run dev:web        # loja + painel + PDV na porta 5173 (já repassa /v1 para a API)
+npm run dev:platform   # super admin na porta 5174`)}
+  <p>Abra a loja com <code class="i">http://localhost:5173/?loja=slug-da-loja</code> (o slug fica guardado). A loja só aparece para o público se estiver em <b>produção</b>; para ver uma loja em desenvolvimento use o login da equipe e o botão "Ver loja", ou publique-a pelo super admin.</p>
+  <h3>Para ver tudo funcionando pela primeira vez</h3>
+  <ol><li>Crie seu super admin e entre (passos 7 e 8).</li><li>No super admin: <b>Lojas → Nova loja</b>; no detalhe da loja, <b>Administrador</b> para criar o dono.</li><li>Entre em <code class="i">/entrar</code> como o dono, cadastre cardápio, zona de entrega e formas de pagamento.</li><li>De volta ao super admin, <b>Publicar</b> a loja (pede o código do autenticador; sem assinatura use cortesia).</li><li>Faça um pedido na loja e veja chegar no painel, com som.</li></ol>
+  ${note('O pedido novo toca uma campainha no painel/PDV/garçom/entregador. Os navegadores só liberam som depois de um toque na página: a primeira vez aparece um aviso azul pedindo isso.')}` },
+
+ { g:'Telas', t:'Impressão por zonas na prática', html: () => `
+  <p class="lead">O ponto mais importante da operação. Funciona assim: o painel decide <b>o que</b> imprimir e <b>onde</b>; um <b>agente</b> no computador da loja faz a impressão e confirma.</p>
+  <h3>1. Cadastre as zonas e ligue as categorias</h3>
+  <p><b>Painel → Impressão</b>: crie as zonas (Cozinha, Bar, Expedição…). Em <b>Categorias</b>, escolha a zona de cada categoria. Marque uma zona como <b>padrão</b> (recebe os itens de categorias sem zona). Zonas "que mostram preços" (caixa/expedição) imprimem o pedido inteiro; as de produção só os próprios itens, sem preço.</p>
+  <h3>2. Instale o agente no computador das impressoras</h3>
+  ${cmd(`npm run agent:build -w @pediu/print-agent        # gera apps/print-agent/dist/agent.mjs (um arquivo só, precisa do Node 20+)
+node agent.mjs printers                                  # lista as impressoras que o computador enxerga
+node agent.mjs pair --url https://loja.seudominio.com.br --code 123456 --name "Caixa"
+node agent.mjs run                                       # deixe rodando (veja abaixo como iniciar com o Windows)`)}
+  <p>O código de 6 dígitos é gerado em <b>Painel → Impressão → Parear agente</b> (vale 10 min, uso único). O agente abre uma conexão <b>de saída</b> para o servidor: não precisa de IP fixo nem abrir porta no roteador.</p>
+  <h3>3. Cadastre as impressoras e ligue às zonas</h3>
+  <table><tr><th>Conexão</th><th>Quando usar</th><th>Endereço</th></tr>
+   <tr><td><b>Rede</b></td><td>impressora com cabo de rede/Wi-Fi (a melhor opção)</td><td><code class="i">192.168.0.50:9100</code></td></tr>
+   <tr><td><b>Windows</b></td><td>impressora USB ligada ao PC</td><td>nome do <b>compartilhamento</b> (compartilhe a impressora no Windows)</td></tr>
+   <tr><td><b>CUPS</b></td><td>Linux/Mac</td><td>nome da fila (<code class="i">lpstat -e</code>)</td></tr></table>
+  <p>Para cada zona escolha a impressora <b>principal</b> e, se quiser, <b>reservas</b> e o número de cópias. Use <b>Imprimir teste</b> em cada impressora: confira os acentos (se saírem trocados, mude de CP860 para CP850 ou CP437).</p>
+  <h3>O que acontece com cada pedido</h3>
+  <ul><li>Pedido novo → um cupom por zona, na impressora principal. Item adicionado a uma mesa → só os itens novos. Cancelado → cupom "CANCELADO" com o motivo.</li>
+   <li>O agente confirma cada cupom. <b>Sem confirmação em 15 s</b>, reenvia; <b>3 falhas</b> → troca para a impressora reserva e avisa na tela; agente offline por 45 s → reserva; sem reserva e sem sucesso em 3 min → marca como <b>falhou</b>, aparece em vermelho e vira alerta.</li>
+   <li>O mesmo evento nunca imprime duas vezes. Se a internet cair, o cupom espera e sai quando voltar.</li>
+   <li>Na fila (<b>Painel → Impressão</b>) você vê cada cupom, abre uma prévia, e pode <b>Reenviar</b> ou <b>Reimprimir</b> o pedido.</li></ul>
+  <h3>Iniciar o agente com o Windows</h3>
+  ${cmd(`schtasks /Create /SC ONLOGON /TN "PediuAgente" /TR "node C:\\pediu\\agent.mjs run" /RL HIGHEST`)}
+  ${warn('<b>Nada disto foi testado com impressora de verdade.</b> A lógica (fila, confirmação, reserva, sem duplicar) é do servidor e do agente; o que só o seu hardware confirma é o byte-a-byte: acentos, corte, gaveta, QR code e a compatibilidade de cada modelo (Elgin, Epson, Bematech, Daruma, Tanca). Comece pelo teste de cada impressora.')}` },
+
+ { g:'Telas', t:'Pagamentos online do cliente', html: () => `
+  <p class="lead">O dinheiro cai <b>direto na conta do lojista</b> (Mercado Pago ou Sicoob). A plataforma nunca recebe e repassa.</p>
+  <h3>Conectar (Painel → Pagamentos)</h3>
+  <table><tr><th>Gateway</th><th>O que precisa</th><th>Serve para</th></tr>
+   <tr><td><b>Mercado Pago</b></td><td>Access Token da conta (e, de preferência, a assinatura secreta do webhook)</td><td>Pix e cartão de crédito</td></tr>
+   <tr><td><b>Sicoob</b></td><td>conta PJ, app no Portal Developers, certificado A1 (.pfx) + senha, client id, chave Pix</td><td>Pix</td></tr></table>
+  <p>As credenciais são <b>testadas antes de salvar</b> e gravadas cifradas; nunca voltam para a tela. Depois crie (ou edite) uma forma de pagamento <b>Pix</b> ou <b>Crédito</b> e ligue <b>Cobrar online</b>, escolhendo o gateway.</p>
+  <h3>O que o cliente vê</h3>
+  <ul><li><b>Pix:</b> QR Code + "copia e cola" + contagem de 15 minutos; a tela confirma sozinha quando paga.</li><li><b>Cartão:</b> vai para o Checkout do Mercado Pago e volta.</li><li>O pedido fica <b>aguardando pagamento</b> (a cozinha <b>não vê e nada imprime</b>) até a confirmação. Pix vencido ou recusado cancela o pedido.</li></ul>
+  <h3>Segurança</h3>
+  <ul><li>O webhook <b>nunca confia no que recebe</b>: reconsulta o pagamento no Mercado Pago/Sicoob com a credencial da loja.</li><li>Só confirma se o <b>valor pago bate</b> com o cobrado. Confirmar duas vezes não faz nada.</li><li>A cada 30 s o sistema <b>concilia</b> os pagamentos pendentes (rede de segurança se um webhook se perder).</li><li>Se um pagamento for aprovado <b>depois</b> de o pedido ser cancelado, o pedido não é reativado: vira um log de erro pedindo o <b>estorno</b>.</li></ul>
+  <h3>No PDV</h3>
+  <p>Em <b>Pedidos e caixa</b>, "Receber" aceita dinheiro (com troco), cartão/vale na maquininha externa, ou <b>cobrar por Pix com o QR na tela</b>. O estorno do Mercado Pago exige a permissão de gerente/administrador.</p>
+  ${note('Para o webhook funcionar, a API precisa de <code class="i">PUBLIC_API_URL</code> (https). Sem ele, a confirmação ainda acontece pela conciliação a cada 30 s (mais lenta).')}
+  ${warn('<b>Não foi testado contra o Mercado Pago nem o Sicoob de verdade.</b> O código segue a documentação deles, mas só um Pix de R$ 1 em produção (e usuários de teste do Mercado Pago) prova. O sandbox do Sicoob não confirma pagamento.')}` },
+
+ { g:'Telas', t:'iFood', html: () => `
+  <p class="lead">Os pedidos do iFood entram no mesmo painel, imprimem nas zonas certas e o status volta para o iFood.</p>
+  <h3>Passos</h3>
+  <ol><li><b>Você</b> (uma vez): cadastre-se como desenvolvedor no iFood, crie um aplicativo <b>centralizado</b> e cole o Client ID e o Secret em <b>Super admin → iFood (plataforma)</b>.</li>
+   <li><b>O lojista</b>: <b>Painel → iFood</b> → informe o ID da loja no iFood (Merchant ID) → <b>Vincular</b>.</li>
+   <li><b>Mapeie os itens</b>: ligue o código externo de cada item do iFood a um produto seu. É isso que faz o item sair na <b>zona de impressão certa</b>. Item sem mapeamento imprime na zona padrão e avisa no log.</li></ol>
+  <h3>Como funciona</h3>
+  <ul><li>A cada <b>30 s</b> a API consulta os eventos do iFood e só confirma (ack) depois de tratar. Um evento repetido não duplica o pedido.</li>
+   <li>Novo pedido → pedido interno (canal iFood), já pago se for online, e imprime. Cancelamento pelo cliente/iFood → cancela aqui e imprime "CANCELADO".</li>
+   <li>Aceitar/pronto/saiu/cancelar aqui avisa o iFood. Se o iFood recusar, a mudança vale aqui e a tela mostra um aviso para você conferir no portal do iFood.</li>
+   <li>O <b>total do iFood manda</b>: diferenças entre itens e total viram taxa ou desconto.</li></ul>
+  ${warn('<b>A homologação oficial do iFood ainda não foi feita</b> e depende deles (testes de polling, confirmação, cancelamento, mudança de endereço e código de coleta). Antes dela, só a loja de teste do iFood funciona. Troca de endereço e código de coleta <b>não estão implementados</b>.')}` },
+
+ { g:'Operação', t:'Versão por loja', html: () => `
+  <p class="lead">Cada loja pode rodar uma versão diferente do app: a loja A na 1.0.0 e a B na 1.10.0.</p>
+  <h3>Como publicar uma versão nova</h3>
+  ${cmd(`# 1. envia o build para o armazenamento (bucket PÚBLICO do Supabase) — versões são imutáveis
+SUPABASE_URL=https://xxxx.supabase.co SUPABASE_SERVICE_KEY=… RELEASES_BUCKET=pediu-releases \\
+  npm run release:web -- 1.4.0
+
+# (para testar sem Supabase: RELEASES_DIR=/data/releases npm run release:web -- 1.4.0)`)}
+  <ol><li>No <b>super admin → Versões por loja → Nova versão</b>, registre <code class="i">1.4.0</code> como <b>beta</b>.</li>
+   <li>Fixe a versão em uma loja de teste (abra a loja → <b>Versão</b>) e confira.</li>
+   <li><b>Promova</b> a estável e use o <b>Rollout</b> (10%, 50%, 100%). "Simular" mostra quantas lojas seriam afetadas sem aplicar. A mesma loja cai sempre no mesmo anel.</li>
+   <li><b>Rollback</b> de uma loja: fixe a versão anterior nela (instantâneo).</li></ol>
+  <h3>Regras</h3>
+  <ul><li>Loja sem versão fixa segue o <b>canal</b> dela (estável por padrão) e usa a mais nova; sem nenhuma versão publicada, usa o app que vem dentro da imagem do edge.</li>
+   <li>Defina o <b>fim do suporte</b> de versões antigas: o super admin lista as lojas ainda nelas.</li>
+   <li><b>Só o app (telas) tem versão por loja.</b> A API e o banco são únicos e precisam continuar compatíveis com as versões em uso (mudanças de banco em duas etapas: acrescentar, migrar, só depois remover).</li></ul>
+  ${warn('O edge só <b>serve</b> a versão certa; <b>nada garante</b> que uma versão antiga continue compatível com a API nova. Teste a compatibilidade antes de aposentar uma versão.')}` },
+
+ { g:'Operação', t:'Domínios próprios', html: () => `
+  <p class="lead">Cada loja abre em <code class="i">slug.seudominio.com.br</code> e pode ter domínios próprios (até 5).</p>
+  <ol><li>O lojista: <b>Painel → Domínios → Adicionar</b> (ex.: <code class="i">pedidos.sualoja.com.br</code>).</li><li>A tela mostra um <b>CNAME</b> (apontando para <code class="i">cname.seudominio.com.br</code>) e um <b>TXT</b> (<code class="i">_pediu-verify.…</code>). Ele cria os dois no DNS dele.</li><li><b>Verificar agora</b>: a API consulta o TXT e, achando, libera o domínio.</li></ol>
+  ${warn('<b>O HTTPS de domínio próprio depende de quem está na frente</b> (veja <code class="i">docs/DOMINIOS.md</code>). Com <b>Caddy</b> (pasta <code class="i">deploy/</code>) ou Cloudflare for SaaS é automático. <b>Com Easypanel puro, cada domínio novo precisa ser adicionado por você no painel do Easypanel.</b> Você também precisa criar o registro <code class="i">cname.seudominio.com.br</code> apontando para o servidor.')}` },
+
+ { g:'Assinaturas', t:'Configurar o Stripe', html: () => `
+  <p class="lead">Comece sempre no <b>modo teste</b>.</p>
+  <ol><li>No Stripe, crie um <b>Product</b> por plano e, para cada um, <b>Prices recorrentes em BRL</b> (mensal e anual) e, se quiser, um <b>Price único</b> para a taxa de implantação.</li>
+   <li>Crie uma <b>restricted key</b> (ou use a secret key de teste) e o <b>endpoint de webhook</b> apontando para <code class="i">https://SUA-API/v1/webhooks/stripe</code> com os eventos: <code class="i">checkout.session.completed</code>, <code class="i">customer.subscription.created/updated/deleted</code>, <code class="i">invoice.paid</code>, <code class="i">invoice.payment_failed</code>.</li></ol>
+  ${cmd(`# step-up antes
+curl -s -b jar -X PUT ${J} localhost:3000/v1/platform/stripe/config \\
+  -d '{"secretKey":"sk_test_…","webhookSecret":"whsec_…"}'
+# → {"ok":true,"mode":"test"}`, 'Gravar as chaves (ficam cifradas)')}
+  ${warn('As chaves nunca voltam pela API (só os 4 últimos caracteres). O modo (teste/produção) é deduzido da chave, e a API recusa price de produção com chave de teste e vice-versa.')}
+  <h3>Cadastrar um plano</h3>
+  ${cmd(`curl -s -b jar -X PUT ${J} localhost:3000/v1/platform/plans/completo -d '{
+  "name":"Completo","modules":["pdv","garcom","ifood"],
+  "stripeProductId":"prod_…","priceMonthly":"price_…","priceYearly":"price_…","priceSetup":"price_…",
+  "trialDays":7,"sort":2}'`)}
+  <p>Ao salvar, cada <b>price é conferido no Stripe</b>: precisa existir, estar ativo, ser em BRL, ter o intervalo certo (mensal/anual), ser único no caso da implantação e ser do mesmo modo da chave. Erros voltam todos juntos em uma mensagem.</p>` },
+
+ { g:'Assinaturas', t:'Checkout, webhook e régua de cobrança', html: () => `
+  ${cmd(`curl -s -b jar ${J} localhost:3000/v1/platform/subscriptions/checkout \\
+  -d '{"tenantId":"UUID_DA_CONTA","planCode":"completo","interval":"month","email":"dono@loja.com"}'
+# → {"url":"https://checkout.stripe.com/…"}  (envie o link ao cliente)`, 'Gerar o link de checkout')}
+  <p>O checkout coleta CNPJ/CPF e endereço, aceita cupom, aplica o trial e cobra a implantação na 1ª fatura. O lojista gerencia cartão e faturas no <b>portal do cliente</b>: <code class="i">POST /v1/platform/subscriptions/portal</code>.</p>
+  ${cmd(`stripe listen --forward-to localhost:3000/v1/webhooks/stripe
+# o comando imprime um whsec_… temporário: use-o no passo anterior enquanto testa localmente`, 'Testar webhooks localmente (Stripe CLI)')}
+  <h3>Régua de cobrança</h3>
+  <table><tr><th>Evento</th><th>Efeito</th></tr>
+   <tr><td><code class="i">invoice.payment_failed</code></td><td>assinatura vira <b>past_due</b> e começa a contar</td></tr>
+   <tr><td>5 dias em atraso</td><td>lojas <b>em produção</b> da conta viram <b>suspensa</b> (o job roda de hora em hora)</td></tr>
+   <tr><td><code class="i">invoice.paid</code> / assinatura ativa</td><td>lojas suspensas voltam sozinhas para produção</td></tr>
+   <tr><td>loja sem nenhuma assinatura (cortesia)</td><td>nunca é suspensa pela régua</td></tr></table>
+  <p>Eventos repetidos do Stripe são ignorados (idempotência) e assinaturas inválidas ou antigas (&gt; 5 min) são recusadas.</p>
+  <p><code class="i">GET /v1/platform/subscriptions</code> devolve a lista e o resumo: <b>MRR</b> (anual dividido por 12), ativas, em trial, em atraso, canceladas e trials que vencem em 7 dias.</p>
+  ${warn('Pix e boleto em assinatura dependem do que a sua conta Stripe Brasil liberar. <b>Confira no painel do Stripe antes de prometer ao cliente.</b> O Stripe também não emite nota fiscal: a NFS-e da mensalidade é à parte (Focus NFe).')}` },
+
+ { g:'Produção', t:'Hospedagem (Easypanel / Docker)', html: () => `
+  <p class="lead">Um repositório, três serviços e o banco no Supabase.</p>
+  <table><tr><th>Serviço</th><th>Build (target)</th><th>Porta</th><th>Domínio</th><th>Variáveis</th></tr>
+   <tr><td><b>api</b> (+ super admin)</td><td><code class="i">api</code></td><td>3000</td><td><code class="i">api.seudominio.com.br</code></td><td>3 URLs do banco, <code class="i">SECRETS_KEYS</code>, <code class="i">BASE_DOMAIN</code>, <code class="i">COOKIE_SECURE=true</code>, <code class="i">TRUST_PROXY=true</code>, <code class="i">PUBLIC_API_URL</code>, <code class="i">EDGE_SECRET</code>, <code class="i">SUPABASE_URL</code> + <code class="i">SUPABASE_SERVICE_KEY</code> (imagens)</td></tr>
+   <tr><td><b>edge</b> (lojas)</td><td><code class="i">edge</code></td><td>3200</td><td><code class="i">*.seudominio.com.br</code> + domínios próprios</td><td><code class="i">API_URL</code> (endereço interno da api), <code class="i">EDGE_SECRET</code> (igual ao da api), <code class="i">RELEASES_BASE_URL</code></td></tr>
+   <tr><td><b>mcp</b></td><td><code class="i">mcp</code></td><td>3100</td><td><code class="i">mcp.seudominio.com.br</code></td><td><b>só</b> <code class="i">MCP_DATABASE_URL</code> e <code class="i">BASE_DOMAIN</code></td></tr></table>
+  <h3>No Easypanel</h3>
+  <ol><li>Crie o projeto e <b>3 serviços do tipo "App"</b> apontando para o mesmo repositório do GitHub, <b>build por Dockerfile</b>, e em cada um informe o <b>target</b> (<code class="i">api</code>, <code class="i">edge</code>, <code class="i">mcp</code>) nos argumentos de build.</li>
+   <li>Preencha as variáveis de cada um (tabela acima). Gere o <code class="i">EDGE_SECRET</code> com <code class="i">openssl rand -hex 32</code>.</li>
+   <li>Adicione os domínios e ative HTTPS. Para as lojas, configure o <b>wildcard</b> <code class="i">*.seudominio.com.br</code> no serviço <code class="i">edge</code>.</li>
+   <li><b>Volume</b> no serviço <code class="i">api</code> em <code class="i">/data/uploads</code> <i>se</i> você não usar o Supabase Storage para as imagens (senão os uploads somem a cada deploy).</li>
+   <li>Crie o bucket <b>público</b> <code class="i">pediu-public</code> (imagens) e <code class="i">pediu-releases</code> (versões do app) no Supabase Storage.</li></ol>
+  <h3>Sem Easypanel</h3>
+  <p>Use <code class="i">deploy/docker-compose.example.yml</code> + <code class="i">deploy/Caddyfile</code>: sobe os três serviços e o Caddy com HTTPS automático (inclusive domínios próprios).</p>
+  ${cmd(`docker build --target api  -t pediu-api  .
+docker build --target edge -t pediu-edge .
+docker build --target mcp  -t pediu-mcp  .`, 'Build manual')}
+  ${warn('<b>O Dockerfile e o compose nunca foram executados</b> (não há Docker na máquina de desenvolvimento). Faça o primeiro build e olhe os logs antes de confiar. O que mais merece atenção no primeiro deploy: a ligação edge → API (<code class="i">API_URL</code> e <code class="i">EDGE_SECRET</code>), o tempo real (SSE) passando pelo proxy do Easypanel, e o WebSocket do agente de impressão.')}
+  <h3>Antes de colocar um cliente real</h3>
+  <ul>
+   <li><input type="checkbox"> <code class="i">COOKIE_SECURE=true</code>, tudo em HTTPS, <code class="i">TRUST_PROXY=true</code> atrás do proxy.</li>
+   <li><input type="checkbox"> Rodei <code class="i">rls_lock.sql</code> e <code class="i">rls_orders.sql</code> no Supabase real e passaram.</li>
+   <li><input type="checkbox"> <b>SECRETS_KEYS</b> e os códigos de recuperação do autenticador guardados fora do computador.</li>
+   <li><input type="checkbox"> Plano Pro do Supabase (backups diários) e um teste de restauração.</li>
+   <li><input type="checkbox"> Stripe em produção com chave restrita e webhook apontando para <code class="i">PUBLIC_API_URL</code>.</li>
+   <li><input type="checkbox"> O serviço do MCP recebe <b>apenas</b> <code class="i">MCP_DATABASE_URL</code>.</li>
+   <li><input type="checkbox"> <code class="i">ALERT_WEBHOOK_URL</code> definido; <code class="i">GET /v1/platform/health</code> com <code class="i">telemetryDropped</code> em 0.</li>
+   <li><input type="checkbox"> Impressora de verdade testada (acentos, corte, gaveta) e queda de internet simulada.</li>
+   <li><input type="checkbox"> Pix real de R$ 1 confirmado e impresso (Mercado Pago e/ou Sicoob).</li>
+   <li><input type="checkbox"> Termos de uso, política de privacidade e contrato de operador (LGPD).</li></ul>
+  <h3>Rotação da chave do cofre</h3>
+  <p>Coloque a nova chave na frente em <code class="i">SECRETS_KEYS</code> (<code class="i">k2:…,k1:…</code>). O que for gravado dali em diante usa a nova; o antigo continua legível. Remova a antiga só depois de regravar os segredos.</p>` },
+
+ { g:'Referência', t:'Rotas da API', html: () => `
+  <p class="lead">As do super admin ficam em <code class="i">/v1/platform</code> (a tabela abaixo omite esse prefixo onde está claro). Corpo sempre em JSON.</p>
+  <table><tr><th>Rota</th><th>O que faz</th><th>Exige</th></tr>
+   <tr><td><code class="i">POST /auth/login</code></td><td>senha → <code class="i">next: enroll | totp</code></td><td>—</td></tr>
+   <tr><td><code class="i">POST /auth/totp/enroll · confirm · verify</code></td><td>cadastrar e usar o autenticador / código de recuperação</td><td>sessão (senha)</td></tr>
+   <tr><td><code class="i">POST /auth/stepup</code></td><td>libera ações sensíveis por 5 min</td><td>sessão completa</td></tr>
+   <tr><td><code class="i">GET /auth/me · sessions</code>, <code class="i">POST /auth/logout · sessions/revoke-others</code></td><td>sessão</td><td>sessão</td></tr>
+   <tr><td><code class="i">GET · POST /stores</code></td><td>listar / criar (em desenvolvimento)</td><td>sessão</td></tr>
+   <tr><td><code class="i">POST /stores/:id/status</code></td><td>publicar, voltar, suspender, arquivar</td><td><b>step-up</b></td></tr>
+   <tr><td><code class="i">GET /stores/:id/revisions</code></td><td>histórico de alterações do MCP</td><td>sessão</td></tr>
+   <tr><td><code class="i">GET /publication-requests</code> · <code class="i">POST …/:id/decide</code></td><td>pedidos do MCP</td><td>decidir: <b>step-up</b></td></tr>
+   <tr><td><code class="i">GET · POST /mcp-tokens</code> · <code class="i">DELETE /:id</code></td><td>tokens do MCP</td><td>criar/revogar: <b>step-up</b></td></tr>
+   <tr><td><code class="i">GET · PUT /stripe/config</code></td><td>chaves do Stripe</td><td>gravar: <b>step-up</b></td></tr>
+   <tr><td><code class="i">GET /plans</code> · <code class="i">PUT /plans/:code</code></td><td>planos e price IDs</td><td>salvar: <b>step-up</b></td></tr>
+   <tr><td><code class="i">GET /subscriptions</code> · <code class="i">POST …/checkout · portal</code></td><td>assinaturas, link de pagamento, portal</td><td>sessão</td></tr>
+   <tr><td><code class="i">POST /stores/:id/admin-user</code></td><td>cria/redefine o administrador da loja</td><td><b>step-up</b></td></tr>
+   <tr><td><code class="i">GET /analytics/overview · stores · stores/:id</code> · <code class="i">GET /health</code></td><td>desempenho e saúde</td><td>sessão</td></tr>
+   <tr><td><code class="i">GET /alerts</code> · <code class="i">POST /alerts/:id/ack · resolve · evaluate</code></td><td>alertas</td><td>sessão</td></tr>
+   <tr><td><code class="i">GET /alert-rules</code> · <code class="i">PUT /alert-rules/:key</code></td><td>regras de alerta</td><td>sessão</td></tr>
+   <tr><td><code class="i">GET /logs · /stores/:id/activity · /audit</code></td><td>logs e auditoria</td><td>sessão</td></tr>
+   <tr><td><code class="i">POST /v1/webhooks/stripe</code></td><td>eventos do Stripe</td><td>assinatura Stripe</td></tr>
+   <tr><td><code class="i">/v1/staff/login · me · logout · users · orders…</code></td><td>login da equipe e pedidos (fora de <code class="i">/platform</code>)</td><td>sessão da equipe</td></tr>
+   <tr><td><code class="i">/v1/store/:slug · …/menu · …/orders</code> · <code class="i">/v1/track/:token</code></td><td>loja online e acompanhamento</td><td>público</td></tr></table>
+  <p>Erros seguem o formato <code class="i">{"error":{"code","message"}}</code>. Códigos úteis: <code class="i">unauthenticated</code> (401), <code class="i">totp_required</code> e <code class="i">stepup_required</code> (403), <code class="i">locked</code> (423).</p>` },
+
+ { g:'Referência', t:'Roadmap: o que falta', html: () => `
+  <p class="lead">Fiel ao plano aprovado (arquivo <code class="i">crie-um-plano-de-linear-shamir.md</code> e a nota nas anotações).</p>
+  <table><tr><th>Item</th><th>Situação</th></tr>
+   <tr><td>Banco, super admin com autenticador, MCP, Stripe, login da equipe, pedidos, desempenho/alertas/logs</td><td><span class="tag ok">feito e testado (antes desta fase)</span></td></tr>
+   <tr><td>Telas: loja, painel, PDV, garçom, entregador, super admin</td><td><span class="tag ok">feito, compila e faz build</span> · <span class="tag no">não testado no navegador</span></td></tr>
+   <tr><td>Tempo real (SSE) com reconexão e reconsulta periódica</td><td><span class="tag ok">feito</span> · <span class="tag no">falta testar atrás do proxy</span></td></tr>
+   <tr><td><b>Impressão por zonas</b>: zonas, impressoras, reserva, fila com confirmação, agente</td><td><span class="tag ok">feito</span> · <span class="tag no">não testado (nem com impressora real)</span></td></tr>
+   <tr><td>Pagamentos online: Mercado Pago (Pix e cartão) e Sicoob (Pix), webhook, conciliação, estorno</td><td><span class="tag ok">feito</span> · <span class="tag no">não testado contra os serviços reais</span></td></tr>
+   <tr><td>iFood: polling, pedido interno, mapeamento, ações de volta</td><td><span class="tag ok">feito</span> · <span class="tag no">sem homologação</span></td></tr>
+   <tr><td>Versão por loja, rollout, rollback, edge e domínios próprios</td><td><span class="tag ok">feito</span> · <span class="tag no">HTTPS automático só com Caddy/Cloudflare</span></td></tr>
+   <tr><td>Docker (3 imagens), script de publicar versão, Caddy</td><td><span class="tag ok">escrito</span> · <span class="tag no">nunca executado</span></td></tr>
+   <tr><td>Login por PIN em dispositivo pareado</td><td><span class="tag no">falta</span></td></tr>
+   <tr><td>Cupons e descontos, fidelidade</td><td><span class="tag no">falta</span></td></tr>
+   <tr><td>NFC-e (Focus NFe), relatórios financeiros, estoque</td><td><span class="tag no">falta</span></td></tr>
+   <tr><td>Agente de IA no WhatsApp; MCP: desfazer revisões, upload de imagens, modelos de nicho</td><td><span class="tag no">falta</span></td></tr>
+   <tr><td>Troca de endereço e código de coleta do iFood</td><td><span class="tag no">falta</span></td></tr></table>
+  ${note('Próximo passo sugerido: <b>rodar a lista de testes (docs/TESTES.md)</b> e subir em uma VPS de teste. Os defeitos que aparecerem ali valem mais do que qualquer funcionalidade nova.')}` },
+];
+
+const CHECK = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 4.8"/></svg>';
+const nav = $('#nav'), main = $('#main'), prog = $('#prog');
+const load = () => { try { return JSON.parse(localStorage.getItem('pediu-wizard') || '{}'); } catch { return {}; } };
+const state = load(); let cur = Math.min(Number(location.hash.slice(1)) || state.cur || 0, STEPS.length - 1);
+const save = () => localStorage.setItem('pediu-wizard', JSON.stringify(state));
+
+function renderNav() {
+  let g = '';
+  nav.innerHTML = STEPS.map((s, i) => {
+    const head = s.g !== g ? `<div class="grp">${(g = s.g)}</div>` : '';
+    return `${head}<button data-i="${i}" class="${i === cur ? 'on' : ''} ${state.done?.[i] ? 'done' : ''}"><span class="n">${state.done?.[i] ? CHECK : i + 1}</span>${s.t}</button>`;
+  }).join('');
+  const n = Object.values(state.done || {}).filter(Boolean).length;
+  prog.style.width = `${(n / STEPS.length) * 100}%`;
+}
+function renderStep() {
+  const s = STEPS[cur];
+  main.innerHTML = `<h2>${s.t}</h2>${s.html()}
+    <div class="row">
+      <button class="btn" id="prev" ${cur === 0 ? 'disabled' : ''}>← Anterior</button>
+      <button class="btn pri" id="next">${cur === STEPS.length - 1 ? 'Concluir' : 'Próximo →'}</button>
+      <label class="chk"><input type="checkbox" id="done" ${state.done?.[cur] ? 'checked' : ''}> Marcar como feito</label>
+    </div>`;
+  document.title = `${s.t} · Pediu`; location.hash = cur; window.scrollTo(0, 0);
+  state.cur = cur; save(); renderNav();
+}
+const go = (i) => { cur = Math.max(0, Math.min(STEPS.length - 1, i)); renderStep(); };
+nav.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) go(Number(b.dataset.i)); });
+main.addEventListener('click', async (e) => {
+  if (e.target.id === 'prev') go(cur - 1);
+  if (e.target.id === 'next') { (state.done ||= {})[cur] = true; save(); go(cur + 1); }
+  if (e.target.classList.contains('cp')) {
+    const text = e.target.previousElementSibling.textContent;
+    try { await navigator.clipboard.writeText(text); } catch { const r = document.createRange(); r.selectNodeContents(e.target.previousElementSibling); getSelection().removeAllRanges(); getSelection().addRange(r); document.execCommand('copy'); }
+    e.target.textContent = 'Copiado'; setTimeout(() => (e.target.textContent = 'Copiar'), 1500);
+  }
+});
+main.addEventListener('change', (e) => { if (e.target.id === 'done') { (state.done ||= {})[cur] = e.target.checked; save(); renderNav(); } });
+window.addEventListener('hashchange', () => { const i = Number(location.hash.slice(1)); if (!Number.isNaN(i) && i !== cur) go(i); });
+document.addEventListener('keydown', (e) => { if (e.target.tagName === 'INPUT') return; if (e.key === 'ArrowRight') go(cur + 1); if (e.key === 'ArrowLeft') go(cur - 1); });
+renderStep();
+</script>
+</body>
+</html>

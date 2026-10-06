@@ -1,0 +1,13 @@
+{
+  "name": "@pediu/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./testing": "./src/testing.ts" },
+  "scripts": {
+    "check": "node scripts/check-sql.mjs && tsc -p . --noEmit",
+    "test": "node scripts/check-sql.mjs && node scripts/run-sql-tests.mjs"
+  },
+  "dependencies": { "postgres": "^3.4.5" },
+  "devDependencies": { "@electric-sql/pglite": "^0.3.0", "libpg-query": "^17.0.0" }
+}

@@ -1,0 +1,34 @@
+@import './platform-theme.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --t-primary: 198 40 40; --t-primary-fg: 255 255 255;
+  --t-secondary: 255 179 0; --t-secondary-fg: 43 27 20;
+  --t-accent: 46 125 50; --t-accent-fg: 255 255 255;
+  --t-bg: 255 248 240; --t-fg: 43 27 20; --t-card: 255 255 255;
+  --t-muted: 243 233 223; --t-muted-fg: 122 106 95; --t-border: 234 223 211; --t-danger: 211 47 47;
+  --t-radius: 16px; --t-font: Poppins, system-ui, sans-serif;
+}
+
+html, body, #root { min-height: 100%; }
+body { margin: 0; -webkit-font-smoothing: antialiased; font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+
+@layer components {
+  /* campos e botões da plataforma (tema tweakcn/shadcn) */
+  .input { @apply w-full rounded-ui-sm border border-input bg-card px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20; }
+  .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-ui-sm bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50; }
+  .btn-ghost { @apply inline-flex items-center justify-center gap-1.5 rounded-ui-sm border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-muted disabled:opacity-50; }
+  .btn-danger { @apply inline-flex items-center justify-center gap-1.5 rounded-ui-sm border border-destructive/30 bg-card px-3 py-1.5 text-sm font-medium text-destructive transition hover:bg-destructive/10; }
+  /* campos e botões da loja (usam o tema: claro ou escuro) */
+  .t-input { @apply w-full rounded-lg border border-t-border bg-t-bg px-3 py-2 text-sm text-t-fg outline-none placeholder:text-t-muted-fg focus:border-t-primary focus:ring-2 focus:ring-t-primary/20; }
+  .t-btn { @apply inline-flex items-center justify-center gap-1.5 rounded-t bg-t-primary px-4 py-3 text-sm font-semibold text-t-primary-fg transition hover:opacity-90 disabled:opacity-40; }
+  .t-btn-ghost { @apply inline-flex items-center justify-center gap-1.5 rounded-t border border-t-border px-4 py-3 text-sm font-semibold text-t-fg transition hover:bg-t-muted; }
+  .card { @apply rounded-ui border border-border bg-card text-card-foreground shadow-ui-sm; }
+  .badge { @apply inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium; }
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
