@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { withPlatform, type Q } from '@pediu/db';
 import type { Ctx } from './context.js';
 import { fail, parse } from './http.js';
+import { can } from '@pediu/shared';
 import { guard } from './session.js';
 import { staffGuard } from './staff.js';
 import { withTenant } from '@pediu/db';
@@ -147,7 +148,23 @@ export function analyticsRoutes(app: FastifyInstance, ctx: Ctx) {
 }
 
 /** Painel do lojista: o dia e os últimos 7 dias da PRÓPRIA loja (a conta vem da sessão; RLS impede olhar outra). */
+const likePat = (s: string) => `%${s.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+
 export function staffDashboardRoutes(app: FastifyInstance, ctx: Ctx) {
+  // busca rápida do topo do painel: pedidos (número, nome ou telefone), clientes com conta e produtos da própria loja
+  app.get('/v1/staff/search', { preHandler: staffGuard(ctx), config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const s = req.staff!;
+    if (!(can(s.role, 'admin.dashboard') || can(s.role, 'pdv'))) return fail(reply, 403, 'forbidden', 'Seu perfil não usa a busca.');   // painel e PDV (escolher o cliente da venda)
+    const b = parse(z.object({ q: z.string().trim().min(2).max(60) }), req.query, reply); if (!b) return;
+    const pat = likePat(b.q), num = /^#?\d{1,9}$/.test(b.q) ? Number(b.q.replace('#', '')) : null;
+    return withTenant(ctx.pools, s.tenantId, async (q) => ({
+      orders: await q`select number, customer_name, status, total_cents, created_at from orders where store_id = ${s.storeId} and status <> 'aguardando'
+        and (number = ${num}::int or customer_name ilike ${pat} or customer_phone ilike ${pat}) order by created_at desc limit 5`,
+      customers: await q`select id, name, email, phone from store_customers where store_id = ${s.storeId} and (name ilike ${pat} or email ilike ${pat} or phone ilike ${pat}) order by created_at desc limit 5`,
+      products: await q`select id, name, price from products where store_id = ${s.storeId} and name ilike ${pat} order by name limit 5`,
+    }));
+  });
+
   app.get('/v1/staff/dashboard', { preHandler: staffGuard(ctx, 'admin.dashboard') }, async (req) => {
     const s = req.staff!;
     const now = ctx.clock.now();
@@ -156,6 +173,8 @@ export function staffDashboardRoutes(app: FastifyInstance, ctx: Ctx) {
     return withTenant(ctx.pools, s.tenantId, async (q) => {
       const [today] = await storeStats(q, [s.storeId], startOfDay, now);
       const [week] = await storeStats(q, [s.storeId], from7, now);
+      // ontem inteiro, para as variações dos cartões ("+12% em relação a ontem")
+      const [yesterday] = await storeStats(q, [s.storeId], new Date(startOfDay.getTime() - 86_400_000), startOfDay);
       const f = iso(from7), t = iso(now);
       const open = await q`select status, count(*)::int as n from orders where store_id = ${s.storeId} and status not in ('entregue', 'cancelado') group by status`;
       const byHour = await q`select extract(hour from created_at at time zone ${TZ})::int as hour, count(*)::int as orders from orders
@@ -164,9 +183,15 @@ export function staffDashboardRoutes(app: FastifyInstance, ctx: Ctx) {
         where i.store_id = ${s.storeId} and o.status <> 'cancelado' and o.created_at >= ${f}::timestamptz and o.created_at < ${t}::timestamptz group by i.name order by qty desc limit 5`;
       const byChannel = await q`select channel, count(*)::int as orders, coalesce(sum(total_cents), 0)::bigint as revenue_cents from orders
         where store_id = ${s.storeId} and status <> 'cancelado' and created_at >= ${f}::timestamptz group by channel order by revenue_cents desc`;
+      // pedidos de hoje por status (a rosca do painel) e os 5 mais recentes (tabela "Últimos pedidos")
+      const todayByStatus = await q`select status, count(*)::int as n from orders where store_id = ${s.storeId} and status <> 'aguardando' and created_at >= ${iso(startOfDay)}::timestamptz group by status`;
+      const recent = await q`select o.id, o.number, o.customer_name, o.status, o.type, o.total_cents, o.created_at,
+          (select string_agg(i.qty::text || ' ' || i.name, ' + ' order by i.created_at) from order_items i where i.order_id = o.id) as items
+        from orders o where o.store_id = ${s.storeId} and o.status <> 'aguardando' order by o.created_at desc limit 5`;
       const [toReceive] = await q`select count(*)::int as n, coalesce(sum(total_cents), 0)::bigint as cents from orders where store_id = ${s.storeId} and not paid and status not in ('cancelado', 'aguardando')`;
       return {
-        today: shape(today), week: shape(week), open: Object.fromEntries(open.map((r) => [r.status, r.n])), byHour,
+        today: shape(today), yesterday: shape(yesterday), week: shape(week), todayByStatus: Object.fromEntries(todayByStatus.map((r) => [r.status, r.n])),
+        recent: recent.map((r) => ({ ...r, items: r.items ?? '' })), open: Object.fromEntries(open.map((r) => [r.status, r.n])), byHour,
         topProducts: top.map((r) => ({ ...r, revenue_cents: Number(r.revenue_cents) })), byChannel: byChannel.map((r) => ({ ...r, revenue_cents: Number(r.revenue_cents) })),
         toReceive: { orders: toReceive!.n, cents: Number(toReceive!.cents) },
       };

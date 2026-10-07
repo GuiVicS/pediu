@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerAsyncHookHandler } from 'fastify';
 import { z } from 'zod';
 import { withTenant, type Q } from '@pediu/db';
-import { can, hashPassword, hashToken, ROLES, verifyPassword, type Perm, type Role } from '@pediu/shared';
+import { can, getOpenStatus, hashPassword, hashToken, ROLES, verifyPassword, type Perm, type Role } from '@pediu/shared';
 import { LOCK_MS, MAX_FAILED, type Ctx } from './context.js';
 import { audit, fail, parse } from './http.js';
 
@@ -84,8 +84,16 @@ export function staffRoutes(app: FastifyInstance, ctx: Ctx) {
 
   app.get(`${P}/me`, { preHandler: staffGuard(ctx) }, async (req) => {
     const s = req.staff!;
-    const [st] = await withTenant(ctx.pools, s.tenantId, (q) => q`select slug, name, status from stores where id = ${s.storeId}`);
-    return { name: s.name, role: s.role, storeId: s.storeId, store: st ? { slug: st.slug as string, name: st.name as string, status: st.status as string } : null };
+    const out = await withTenant(ctx.pools, s.tenantId, async (q) => {
+      const [st] = await q`select slug, name, status from stores where id = ${s.storeId}`;
+      const [theme] = await q`select data->>'logoUrl' as logo from store_themes where store_id = ${s.storeId}`;
+      const [cfg] = await q`select data from store_settings where store_id = ${s.storeId}`;
+      return { st, logo: (theme?.logo ?? '') as string, open: getOpenStatus((cfg?.data ?? {}) as Record<string, any>, ctx.clock.now()) };
+    });
+    return {
+      name: s.name, role: s.role, storeId: s.storeId,
+      store: out.st ? { slug: out.st.slug as string, name: out.st.name as string, status: out.st.status as string, logoUrl: out.logo, open: out.open.open, openLabel: out.open.label } : null,
+    };
   });
 
   app.post(`${P}/logout`, async (req, reply) => {

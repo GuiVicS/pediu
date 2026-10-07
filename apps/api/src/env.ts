@@ -23,13 +23,17 @@ const Env = z.object({
   SMTP_SECURE: z.enum(['true', 'false']).default('false'),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
-  // agente de atendimento (WhatsApp): sem ANTHROPIC_API_KEY o agente responde 503; sem TRANSCRIBE_* a transcrição fica indisponível
+  // agente de atendimento (WhatsApp). Escolha o provedor na tela do super admin (Inteligência artificial) ou aqui: LLM_PROVIDER = anthropic | openai | groq | gemini |
+  // mistral | deepseek | xai | openrouter | together | ollama | custom, com a chave do provedor (ANTHROPIC_API_KEY, OPENAI_API_KEY, GROQ_API_KEY, GEMINI_API_KEY,
+  // MISTRAL_API_KEY, DEEPSEEK_API_KEY, XAI_API_KEY, OPENROUTER_API_KEY, TOGETHER_API_KEY ou LLM_API_KEY). Sem LLM_PROVIDER vale a primeira chave encontrada.
+  // AGENT_MODEL e LLM_BASE_URL sobrescrevem o modelo e o endereço padrão. Sem nada configurado o agente responde 503.
   ANTHROPIC_API_KEY: z.string().optional(),
-  AGENT_MODEL: z.string().default('claude-haiku-4-5-20251001'),
+  AGENT_MODEL: z.string().optional(),
   // Whisper: API da OpenAI (informe só a chave) ou servidor próprio/Groq compatível com /audio/transcriptions (informe a URL; a chave é opcional)
   TRANSCRIBE_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
   TRANSCRIBE_API_KEY: z.string().optional(),
-  TRANSCRIBE_MODEL: z.string().default('whisper-1'),
+  TRANSCRIBE_MODEL: z.string().optional(),            // padrão por provedor (whisper-1 na OpenAI, whisper-large-v3-turbo na Groq)
+  TRANSCRIBE_PROVIDER: z.enum(['openai', 'groq', 'custom']).optional(),
   MAIL_FROM: z.string().default('PediuLanchou <nao-responda@pediulanchou.com.br>'),
 });
 

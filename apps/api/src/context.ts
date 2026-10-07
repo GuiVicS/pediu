@@ -16,6 +16,8 @@ export interface Ctx {
   mailer?: import('./mailer.js').Mailer;
   /** IA do atendimento (chave só no servidor). Ausente = agente indisponível. */
   llm?: import('./llm.js').Llm;
+  /** Configuração de IA em tempo de execução (painel do super admin > variáveis de ambiente). `llm`/`transcriber` acima têm prioridade (testes). */
+  ai?: import('./aiConfig.js').AiRuntime;
   transcriber?: import('./llm.js').Transcriber;
   stripe?: import('./stripe.js').StripeClient;
   telemetry?: import('./telemetry.js').Telemetry;

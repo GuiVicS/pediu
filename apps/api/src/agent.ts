@@ -1,3 +1,4 @@
+import { getLlm, getTranscriber } from './aiConfig.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { withTenant, type Q } from '@pediu/db';
@@ -44,7 +45,7 @@ export interface AgentResult { text: string; handoff: boolean; handoffReason?: s
 
 /** Laço de ferramentas. Cada ferramenta consulta o banco com a loja da credencial; o modelo nunca escolhe loja nem tenant. */
 export async function runAgent(ctx: Ctx, a: { tenantId: string; storeId: string; chatId: string; customerName: string; messages: AgentMsg[]; features: Set<string> }): Promise<AgentResult> {
-  const llm = ctx.llm!;
+  const llm = (await getLlm(ctx))!;
   const history: LlmMessage[] = [];
   for (const m of a.messages) {
     const role = m.fromMe ? 'assistant' : 'user';
@@ -110,7 +111,7 @@ export function agentRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post(`${E}/agent/reply`, { preHandler: extensionGuard(ctx, 'ai_agent'), bodyLimit: 12_000_000, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
     const b = parse(z.object({ chatId, customerName: z.string().max(80).default(''), messages: z.array(msgSchema).min(1).max(20) }), req.body, reply); if (!b) return;
     const e = req.extension!;
-    if (!ctx.llm) return fail(reply, 503, 'agent_unavailable', 'O agente de IA não está configurado no servidor.');
+    if (!(await getLlm(ctx))) return fail(reply, 503, 'agent_unavailable', 'O agente de IA não está configurado no servidor.');
     const last = b.messages.at(-1)!;
     const features = await featuresOf(e.tenantId, e.storeId);
     const st = await withTenant(ctx.pools, e.tenantId, async (q) => {
@@ -165,9 +166,10 @@ export function agentRoutes(app: FastifyInstance, ctx: Ctx) {
   // ---- transcrição de áudio (o arquivo não é guardado nem registrado em log) ----
   app.post(`${E}/agent/transcribe`, { preHandler: extensionGuard(ctx, 'audio_transcription'), bodyLimit: 12_000_000, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
     const b = parse(z.object({ mimetype: z.string().max(60).refine((m) => AUDIO_TYPE.test(m), 'Formato de áudio não suportado.'), data: z.string().min(10).max(MAX_MEDIA_B64) }), req.body, reply); if (!b) return;
-    if (!ctx.transcriber) return fail(reply, 503, 'transcription_unavailable', 'A transcrição não está configurada no servidor.');
+    const transcriber = await getTranscriber(ctx);
+    if (!transcriber) return fail(reply, 503, 'transcription_unavailable', 'A transcrição não está configurada no servidor.');
     try {
-      const text = await ctx.transcriber.transcribe({ mimetype: b.mimetype, data: Buffer.from(b.data, 'base64') });
+      const text = await transcriber.transcribe({ mimetype: b.mimetype, data: Buffer.from(b.data, 'base64') });
       return text ? { text } : fail(reply, 422, 'no_speech', 'Não foi possível entender o áudio.');
     } catch { return fail(reply, 502, 'transcription_failed', 'Falha ao transcrever o áudio. Tente novamente.'); }
   });

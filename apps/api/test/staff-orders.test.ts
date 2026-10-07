@@ -291,7 +291,9 @@ test('pré-visualização: loja em desenvolvimento só abre para a equipe da pr�
   assert.equal(info.status, 200); assert.equal(info.body.status, 'desenvolvimento');
   assert.ok((await dono.get(`/v1/store/${D.slug}/menu`)).body.products.length > 0);
   const me = await dono.get('/v1/staff/me');
-  assert.deepEqual(me.body.store, { slug: D.slug, name: `Loja ${D.slug}`, status: 'desenvolvimento' });
+  // /me também traz a logo e se a loja está aberta (cartão da loja no painel); o horário do seed é 24 h
+  assert.deepEqual(me.body.store, { slug: D.slug, name: `Loja ${D.slug}`, status: 'desenvolvimento', logoUrl: '', open: true, openLabel: me.body.store.openLabel });
+  assert.match(me.body.store.openLabel, /^Aberto/);
 
   // pedido real continua bloqueado fora de produção, mesmo para a equipe
   assert.equal((await checkout(dono, D)).status, 404);

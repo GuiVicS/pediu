@@ -14,6 +14,8 @@ Atualizado em 2026-10-07. Este arquivo é o ponto de entrada para continuar em o
 **Implementado e testado por testes automáticos** (API 82, extensão 18, shared 27, edge 3, SQL de isolamento incl. `rls_whatsapp.sql`):
 clientes por e-mail e histórico; rodapé configurável; checklist de funcionalidades por loja (super admin); pareamento da extensão com a sessão do lojista; catálogo/orçamento/consulta de pedido para o agente; respostas rápidas; agente de IA (Claude) com ferramentas, áudio (Whisper) e imagem; rascunho de pedido com link; **cupons de desconto** (migration `20261012000001_coupons.sql`, `apps/api/src/coupons.ts`, `/painel/cupons`, campo no checkout, “Meus cupons” na conta); modo automático/assistido com pausa por humano; disparos com ritmo e envio incerto nunca repetido; pré-visualização da loja em desenvolvimento para a equipe; PWA por tela (vitrine, painel, PDV, garçom, entregador) e do super admin; guias HTML responsivos com modo escuro.
 
+**Nesta passagem (2026-10-07, noite)**: IA multi-provedor com tela de chaves, painel do lojista redesenhado, banners da plataforma, PDV com turno de caixa e pagamento na tela/externo — ver a seção "Atualização — IA multi-provedor, painel novo, banners e PDV" abaixo.
+
 **Decisões do dono do produto (2026-10-07)**
 - **Login do cliente:** manter **só e-mail**; telefone fica como contato do pedido (a conta pede o telefone). Reabrir só se pedirem SMS/WhatsApp.
 - **Cupons:** implementar todas as regras, configuráveis por loja — **feito** (ver abaixo).
@@ -254,3 +256,100 @@ Adicionada a **Parte 12** em `docs/GUIA-DIDATICO.md`: ficha do cliente, platafor
 
 ### Cupons de desconto (2026-10-07)
 Decisão do dono: todas as regras, customizáveis por loja. Implementado: tabelas `coupons`, `coupon_customers`, `coupon_redemptions` e `orders.coupon_code` (migration `20261012000001_coupons.sql`, **10ª migration**), gatilho que devolve o uso quando o pedido é cancelado; `apps/api/src/coupons.ts` (`evaluateCoupon`/`redeemCoupon`; a validação roda dentro da transação do pedido com `for update`, então limites não estouram com pedidos simultâneos); rotas `POST /v1/store/:slug/coupons/validate` (limite de 20/min), `GET /v1/store/:slug/customer/coupons`, `GET/POST/PUT/DELETE /v1/staff/coupons`, `GET/PUT /v1/staff/coupons/:id/customers` (perfil `admin.loja`); tela `apps/web/src/admin/CouponsAdmin.tsx`, campo “Cupom de desconto” no checkout e “Meus cupons” na conta. Regras: código por loja, porcentagem (com teto) ou valor fixo, pedido mínimo, janela de datas, limite total e por cliente (por conta e por telefone — últimos 8 dígitos), público geral ou clientes escolhidos (exige login). O desconto vale só sobre os itens (nunca a entrega) e nunca passa dos itens; cupom já usado não é apagado (desativar). Validado: `coupons.test.ts` 8 casos, `rls_coupons.sql`. **Não validado:** telas no navegador; se o cupom de impressora e as telas de pedido exibem o desconto; combinação com pagamento online real. Guia, Portainer e assistente já listam as **10** migrations.
+## Atualização — IA multi-provedor, painel novo, banners e PDV (2026-10-07, sessão local com Docker)
+
+Implementado e coberto por testes (API 100/100 com `node --liftoff-only`, SQL de isolamento `rls_pdv.sql` e as demais). **Não** implica validação no mundo real.
+
+### 1. IA do atendimento com vários provedores (`apps/api/src/llm.ts`, `aiConfig.ts`)
+- Provedores: Anthropic (API nativa), OpenAI, Groq, Google Gemini, Mistral, DeepSeek, xAI, OpenRouter, Together, Ollama (sem chave) e "outro compatível com OpenAI" (vLLM, LM Studio, LiteLLM…). Todos, menos a Anthropic, usam o protocolo `/chat/completions` (ferramentas e imagens convertidas). Modelo padrão por provedor; **os nomes dos modelos mudam com frequência: conferir no console de cada provedor**.
+- Transcrição de áudio: OpenAI (whisper-1), Groq (whisper-large-v3-turbo) ou servidor próprio (`/audio/transcriptions`). Nome do arquivo enviado agora acompanha o tipo (ogg/wav/mp3/m4a/webm).
+- **Onde colocar a chave**: (a) tela **Inteligência artificial** do super admin (`/ia`): provedor, chave, modelo, endereço, "Testar conexão"; a chave é gravada **cifrada** em `platform_settings` (`ai.llm`, `ai.stt`), nunca volta nas respostas e trocar exige step-up; vale na hora, sem reiniciar. (b) Variáveis de ambiente do container `api` (no ambiente local: `C:\Users\thnkad\pediu-local\.env`): `LLM_PROVIDER` (anthropic|openai|groq|gemini|mistral|deepseek|xai|openrouter|together|ollama|custom) + a chave do provedor (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY`, `TOGETHER_API_KEY` ou `LLM_API_KEY`); `AGENT_MODEL`, `LLM_BASE_URL`; transcrição: `TRANSCRIBE_PROVIDER`, `TRANSCRIBE_URL`, `TRANSCRIBE_API_KEY`, `TRANSCRIBE_MODEL`. A tela tem prioridade sobre o ambiente; sem `LLM_PROVIDER` vale a primeira chave encontrada. Depois de mudar o `.env`: `docker compose up -d api`.
+- `AGENT_MODEL` e `TRANSCRIBE_MODEL` deixaram de ter padrão fixo (o padrão agora é por provedor).
+- Não validado: chamada real a qualquer provedor (os testes usam servidor falso e checam o formato das requisições). Gemini/Groq/OpenRouter dependem de o modelo escolhido aceitar ferramentas.
+
+### 2. Painel do lojista (visual novo)
+- `AdminLayout.tsx`: barra lateral com cabeçalho azul, cartão da loja (logo, aberta/fechada/desenvolvimento), menu enxuto (Visão geral, Pedidos, Cardápio, Clientes, Cupons, Aparência, Pagamentos, Entrega, Impressão, Domínios, Equipe + "Mais"); topo com título da página (PageHeader via portal), **busca real** (`GET /v1/staff/search`: pedidos, clientes, produtos), sino com pedidos novos, menu do usuário.
+- `Dashboard.tsx`: indicadores com variação contra ontem (sem inventar % quando ontem é zero), gráfico de pedidos por hora (SVG), rosca por status, últimos pedidos, mais vendidos/tempos/a receber. API `/v1/staff/dashboard` ganhou `yesterday`, `todayByStatus`, `recent`; `/v1/staff/me` ganhou `store.logoUrl`, `open`, `openLabel`.
+- Pendente: o seletor de data do topo só mostra "Hoje"; não há intervalo.
+
+### 3. Banners da plataforma (`banners.ts`, migration `20261013000002_platform_banners.sql`)
+- Super admin (`/banners`): cadastra por área (**login** e **dashboard**), com envio de imagem (`POST /v1/platform/uploads`), título, link (http(s) ou caminho do painel), ordem, janela de datas e liga/desliga. Criar/editar/apagar exigem step-up e vão para a auditoria.
+- Lojista: tela de login **dividida ao meio** (formulário + carrossel de banners, só ≥ lg; sem banners mostra a marca) e **faixa fina clicável** acima do dashboard. `GET /v1/banners?placement=` é público (só ativos e dentro da validade). Tamanhos recomendados: login 1080×1350, dashboard 1600×200.
+- A faixa do dashboard abre o link em nova aba (externo) ou navega no painel (caminho `/painel/...`).
+
+### 4. PDV novo (plano em `docs/PDV-PLANO.md`; migration `20261013000001_pdv_cash.sql`)
+Base: 8 telas de referência em `G:\Meu Drive\pdlc\pdlc-operacao-equipe\Assets\PDV`.
+- **Pagamento** (regra do dono): *na tela* = Pix por QR (Mercado Pago/Sicoob, confirmação automática, `payment_mode = tela`); *externo* = **maquininha** (crédito/débito, referência/NSU opcional, **ainda não integrada**: o operador confirma "aprovou") e **dinheiro** (teclado numérico, recebido, troco calculado no servidor); outras formas cadastradas (Pix manual, vale) e "pagar depois". Gravado em `orders`: `paid_type`, `payment_mode`, `cash_received_cents`, `change_cents`, `payment_ref`, `paid_by`, `cash_session_id`.
+- **Turno de caixa** (`cash_sessions`, um aberto por operador/loja): abertura com valor e detalhamento por cédulas/moedas; fechamento com resumo por forma de pagamento, cancelamentos fora das vendas, esperado em dinheiro = abertura + vendas em dinheiro, contado, diferença, observação, resumo congelado, relatório para imprimir (janela do navegador). Rotas `GET /v1/staff/cash/current`, `POST /v1/staff/cash/open|close`. Vender sem caixa aberto continua permitido (aviso na tela).
+- Venda: categorias, cards com foto, ticket com modo Balcão/Retirada/Delivery, **cliente da conta** (busca), **cupom** (`POST /v1/staff/coupons/check`, desconto recalculado ao mudar itens), pagamento, tela de sucesso com **cupom por setor** (`GET /v1/staff/print/orders/:id/jobs`), histórico com busca/filtros/painel de detalhe e "A receber".
+- `OrderBuilder.tsx` agora usa `ProductPicker.tsx` (janela de adicionais compartilhada com o garçom).
+- Fora do escopo/pendente: integração real da maquininha, sangria/suprimento, taxa de serviço, e-mail/PDF do cupom, vários operadores no mesmo turno, relatório em PDF. Retirada e Balcão são o mesmo tipo (`retirada`); o filtro do histórico agrupa "Balcão e retirada".
+- Não validado: impressora física, gateways reais, tablet/celular.
+
+### 5. Ambiente local (Docker) e ferramentas
+- Máquina com pouca RAM: os testes (PGlite) estouram a memória do Node. Rodar com `node --liftoff-only --import tsx --test --test-concurrency=1 test/*.test.ts` (dentro de `apps/api`) e `node --liftoff-only scripts/run-sql-tests.mjs` (em `packages/db`).
+- Migrations aplicadas no banco local `pediu` (volume `pediu_pgdata`): até `20261013000002`. Backups em `C:\Users\thnkad\pediu-local\backups\`. Mailpit local em http://localhost:8025 (e-mails de código do cliente).
+- Dados de demonstração na loja `burger-lab`: administrador `dono@burger-lab.local` (senha em `STORE_ADMIN_PASSWORD` no `.env` local), 12 pedidos de exemplo com horários espalhados, 4 banners. Scripts em `pediu-local\work\` (`prep.mjs`, `shots.mjs`, `shots2.mjs`: capturas com Puppeteer + Edge).
+- Correções anteriores já no GitHub: Dockerfile (`tsconfig.base.json`) e JSON duplo no driver (`packages/db/src/pools.ts`). Instalar o Portainer e a stack: `PORTAINER-DEPLOY.md` (em `pediu-local`) e `deploy/docker-compose.portainer.yml`.
+
+### 5b. Nota fiscal — **em standby** (decisão do dono, 2026-10-07)
+Não existe emissão fiscal no app. Quando for retomada deve ser **opcional, com chave liga/desliga** (funcionalidade `fiscal_invoice` no checklist por loja + chave na tela fiscal do lojista) e por provedor externo de API fiscal. Desenho, dados necessários e perguntas em aberto: `docs/PLANOS-FUTUROS.md`. Não iniciar sem o dono escolher o provedor.
+
+### 6. Do handoff que continua **pendente** (não foi feito nesta passagem)
+Agente de impressão Windows em `.exe`; botão de download da extensão WhatsApp (ZIP versionado); PWAs por área (ícones/manifestos próprios) — ver a seção abaixo; modo de pré-visualização/botão "Ver loja" no painel (parcialmente: o branch já traz `?preview`); remover `supabase-pediu` do `.mcp.json` local; validações reais (WhatsApp Web, provedores de IA, impressora, SMTP).
+
+## Novo pedido — downloads e PWAs por área (2026-10-07)
+
+**Estado: requisitos registrados; implementação pendente.** O usuário pediu organizar este trabalho no handoff. Não tratar esta seção como evidência de executáveis, downloads ou PWAs já entregues.
+
+### 1. Agente de impressão Windows: executável baixável
+
+- Transformar `apps/print-agent` em aplicativo Windows distribuído como `.exe`, com runtime incluído: usuário não deve precisar instalar Node.js ou executar comandos.
+- Disponibilizar botão **Baixar agente de impressão para Windows** na tela de impressão do lojista, ao lado do pareamento.
+- Instalação e interface simples para informar endereço da plataforma, código de pareamento e nome do computador; conectar, desconectar, mostrar estado e diagnóstico da impressora.
+- Permitir iniciar com o Windows e operar em segundo plano; preservar configuração em atualização e permitir desinstalação.
+- Preservar drivers existentes (rede e compartilhamento Windows), autenticação e confirmação dos trabalhos. Validar impressora física antes de anunciar funcionamento completo.
+- Distribuir arquivo versionado, com tamanho, versão e checksum. Não incluir chaves, tokens ou configuração de uma loja no instalador.
+- Estado atual: existe CLI TypeScript e script de build para `dist/agent.mjs`; não foi encontrado instalador `.exe` pronto. Esse agente é de **impressão**, separado da IA de atendimento e da extensão WhatsApp.
+
+### 2. Extensão WhatsApp: pacote baixável
+
+- Adicionar **Baixar extensão WhatsApp** em `/painel/whatsapp`, com pacote `.zip` versionado e instruções de instalação/atualização.
+- Gerar o ZIP a partir do build de `apps/whatsapp-extension`, incluindo manifesto, scripts, WA-JS e recursos necessários, sem node_modules, código de teste ou credenciais.
+- Para instalação manual, explicar extrair o ZIP e usar **Carregar sem compactação** no Chrome. Download do ZIP não instala automaticamente a extensão; publicação na Chrome Web Store é uma etapa futura separada.
+- Distribuir builds compatíveis com a API e manter versão visível. Preservar vínculo/configuração quando a atualização permitir; oferecer novo pareamento se necessário.
+- Manter suporte a HTTP no ambiente local e HTTPS em produção. A pasta instalada `C:\Users\thnkad\Documents\extensão\pediulanchou` foi ajustada nesta sessão para aceitar HTTP, mas essa alteração no bundle local ainda precisa ser refletida no fonte/build distribuído. Conferir `src/api.ts`, `src/popup.ts` e permissões de host.
+- Estado atual: existe build da extensão e instalação por pasta; não foi validado um botão de download servido pela plataforma.
+
+### 3. Plataforma PWA: identidade e instalação por área
+
+Garantir experiência instalável em todas as áreas, com abertura direta na área correta, ícone próprio e sessão/permissão respeitadas. Não basta trocar o favicon da aba.
+
+| PWA / área | Entrada | Identidade e ícone solicitado |
+|---|---|---|
+| Loja do cliente | `/` | Nome da loja e **favicon enviado pelo lojista**; fallback da plataforma se ausente |
+| Painel do lojista | `/painel` | Nome da loja + Painel; SVG próprio de administração |
+| Garçom | `/garcom` | Nome da loja + Garçom; SVG próprio de atendimento/mesa |
+| PDV | `/pdv` | Nome da loja + PDV; SVG próprio de caixa/venda |
+| Entregador | `/entregador` | Nome da loja + Entregador; SVG próprio de entrega |
+| Super admin | Origem da plataforma | Pediu — Super admin; SVG próprio de gestão da plataforma |
+
+- Criar SVGs originais e consistentes para as áreas administrativas/operacionais. Gerar derivados PNG 192/512, versão maskable e apple-touch-icon quando necessário; SVG sozinho não garante suporte em todos os dispositivos.
+- Para a loja, derivar ícones instaláveis do favicon upado, com enquadramento adequado e sem declarar dimensões que o arquivo não possui. Troca do favicon deve atualizar os recursos; considerar cache do navegador/launcher.
+- Definir manifesto e `id` estável e distinto por loja/área, `name`, `short_name`, `start_url`, `scope`, cores, ícones e display standalone. Confirmar coexistência de instalações no mesmo domínio.
+- Avaliar rotas/escopos atuais antes de implementar: entradas `/pdv`, `/garcom` e `/entregador` ainda são rotas da mesma SPA. Login fora do escopo deve voltar à área de origem; não perder o destino nem redirecionar todas as instalações à vitrine.
+- Oferecer **Instalar aplicativo** na área correspondente; instruções manuais para iOS. Manter identidade/favicon específicos durante navegação.
+- Service worker: app shell e fallback de conexão, atualização controlada e remoção de caches antigos. Não servir dados privados de outro usuário/loja nem cachear respostas autenticadas indiscriminadamente.
+- Sem conexão, mostrar estado e bloquear ações que precisam do servidor (pedidos, pagamentos, mudança de status). Não inventar sincronização offline de operações comerciais sem projeto e validação próprios.
+- Estado atual: `apps/web/src/lib/pwa.ts` registra `/sw.js`; `apps/web/public/sw.js` existe; `apps/web-edge/src/edge.ts` gera um manifesto da loja com `start_url` raiz e scope `/`. Não foi validada identidade instalável separada para cada área. `ThemeEditor.tsx` já oferece upload de favicon, aplicado em `lib/theme.ts`.
+
+### 4. Sequência e aceite
+
+1. Definir fluxo de downloads e pipeline de artefatos versionados; empacotar agente Windows e extensão.
+2. Incluir downloads nas telas respectivas e verificar arquivos/versões em um navegador.
+3. Criar SVGs e derivados; implementar manifestos e instalação por área/loja.
+4. Testar instalação, abertura direta, login, atualização e funcionamento standalone no Windows/Android/iOS conforme suporte do navegador.
+5. Validar isolamento entre lojas/usuários, limpeza de sessão, perda de rede e atualização sem apagar dados existentes.
+6. Registrar no handoff caminhos dos artefatos, URLs de download, versões e testes realmente executados.
+
+Aceite: usuário baixa e instala o agente de impressão sem terminal; baixa e instala a extensão com instruções claras; instala os PWAs das áreas com ícones distintos; a loja usa seu favicon; cada instalação abre no destino correto e preserva permissões. Estes critérios ainda precisam ser executados.

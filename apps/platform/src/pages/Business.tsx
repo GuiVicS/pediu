@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Copy, KeyRound, Link2, Plus, Rocket, Save, Trash2 } from 'lucide-react';
+import { Check, Copy, ExternalLink, KeyRound, Link2, Loader2, Plus, Rocket, Save, Trash2, Zap } from 'lucide-react';
 import { del, get, post, put, brl, dt } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Field, Modal, Toggle } from '@/ui/kit';
@@ -175,6 +175,85 @@ export function StoreFooter() {
         </div>
         <button className="btn" disabled={act.busy || !/^https?:\/\/\S+$/i.test(value) || value === current}
           onClick={() => act.run(async () => { await stepUp(() => put('/v1/platform/public-settings', { landingUrl: value.trim() })); toast('Link salvo'); setUrl(null); l.reload(); })}><Save size={14} /> Salvar</button>
+      </div>
+    </>
+  );
+}
+
+// ---------------- inteligência artificial (agente de atendimento e transcrição de áudio) ----------------
+interface AiPreset { id: string; label: string; baseUrl: string; defaultModel: string; needsKey: boolean; keysUrl: string; note: string; envKey: string }
+interface AiActive { provider: string; model: string; baseUrl: string; source: 'painel' | 'ambiente' }
+interface AiSaved { provider: string; model: string; baseUrl: string; hasKey: boolean }
+
+function AiCard({ kind, title, desc, presets, active, saved, onChanged }: { kind: 'llm' | 'stt'; title: string; desc: string; presets: AiPreset[]; active: AiActive | null; saved: AiSaved | null; onChanged: () => void }) {
+  const { stepUp } = useAuth(); const act = useAction(); const toast = useToast();
+  const [provider, setProvider] = useState(saved?.provider ?? active?.provider ?? presets[0]!.id);
+  const [apiKey, setApiKey] = useState(''); const [model, setModel] = useState(saved?.model ?? ''); const [baseUrl, setBaseUrl] = useState(saved?.baseUrl ?? '');
+  const [test, setTest] = useState<{ ok: boolean; ms?: number; reply?: string; error?: string } | null>(null);
+  const preset = presets.find((p) => p.id === provider) ?? presets[0]!;
+  const sameSaved = saved?.provider === provider;
+  const customUrl = provider === 'custom' || provider === 'ollama';
+  const pick = (id: string) => {
+    setProvider(id); setApiKey(''); setTest(null);
+    const p = presets.find((x) => x.id === id)!;
+    setModel(saved?.provider === id ? saved.model : ''); setBaseUrl(saved?.provider === id ? saved.baseUrl : p.id === 'custom' ? '' : p.baseUrl);
+  };
+  const ready = (!preset.needsKey || !!apiKey || sameSaved) && (provider !== 'custom' || (!!baseUrl && (kind === 'stt' || !!model)));
+  const save = () => act.run(async () => {
+    await stepUp(() => put('/v1/platform/ai-settings', { kind, provider, ...(apiKey ? { apiKey } : {}), ...(model ? { model } : {}), ...(customUrl || baseUrl !== preset.baseUrl ? { baseUrl } : {}) }));
+    toast('Configuração salva'); setApiKey(''); setTest(null); onChanged();
+  });
+  const run = async () => { setTest(null); const r = await act.run(() => post<{ ok: boolean; ms?: number; reply?: string; error?: string }>('/v1/platform/ai-settings/test', { kind })); if (r) setTest(r); };
+  const remove = () => confirm('Remover a configuração salva? O servidor volta a usar as variáveis de ambiente (se houver).') && act.run(async () => {
+    await stepUp(() => del(`/v1/platform/ai-settings/${kind}`)); toast('Configuração removida'); setApiKey(''); setModel(''); setTest(null); onChanged();
+  });
+
+  return (
+    <div className="card space-y-3 p-4 text-sm">
+      <div><div className="text-base font-semibold">{title}</div><div className="text-xs text-muted-foreground">{desc}</div></div>
+      <div className={`rounded-ui-sm px-3 py-2 text-xs ${active ? 'bg-green-500/10 text-green-800 dark:text-green-300' : 'bg-amber-500/10 text-amber-800 dark:text-amber-300'}`}>
+        {active ? <>Em uso: <b>{presets.find((p) => p.id === active.provider)?.label ?? active.provider}</b> · modelo <code>{active.model}</code> · origem: {active.source === 'painel' ? 'esta tela' : 'variáveis de ambiente do servidor'}</> : 'Nenhum provedor configurado: a função responde “indisponível”.'}
+      </div>
+      <ErrorBox>{act.error}</ErrorBox>
+      <Field label="Provedor" hint={preset.note}>
+        <select className="input" value={provider} onChange={(e) => pick(e.target.value)}>{presets.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select>
+      </Field>
+      {preset.needsKey || provider === 'custom' ? (
+        <Field label={preset.needsKey ? 'Chave de API' : 'Chave de API (se o servidor exigir)'} hint={sameSaved && saved?.hasKey ? 'Há uma chave salva (cifrada). Deixe em branco para mantê-la.' : preset.envKey ? `Também pode vir da variável de ambiente ${preset.envKey}.` : undefined}>
+          <div className="flex gap-2">
+            <input className="input flex-1 font-mono" type="password" autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={sameSaved && saved?.hasKey ? '••••••••••••' : 'cole a chave aqui'} />
+            {preset.keysUrl && <a className="btn-ghost whitespace-nowrap" href={preset.keysUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} /> Obter chave</a>}
+          </div>
+        </Field>
+      ) : <p className="text-xs text-muted-foreground">Este provedor não usa chave. {preset.keysUrl && <a className="underline" href={preset.keysUrl} target="_blank" rel="noopener noreferrer">Saiba mais</a>}</p>}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Modelo" hint="Em branco usa o padrão do provedor."><input className="input font-mono" value={model} onChange={(e) => setModel(e.target.value)} placeholder={preset.defaultModel || 'nome do modelo'} /></Field>
+        {(customUrl || baseUrl) && <Field label={kind === 'stt' ? 'Endereço completo (/audio/transcriptions)' : 'Endereço da API'} hint={provider === 'ollama' ? 'No Docker, o Ollama do seu computador é host.docker.internal.' : undefined}><input className="input font-mono" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://…" /></Field>}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button className="btn" disabled={act.busy || !ready} onClick={save}><Save size={14} /> Salvar</button>
+        <button className="btn-ghost" disabled={act.busy || !active} onClick={() => void run()}>{act.busy ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />} Testar conexão</button>
+        {saved && <button className="btn-danger !px-2 !py-1.5 text-xs" disabled={act.busy} onClick={remove}><Trash2 size={13} /> Remover configuração salva</button>}
+      </div>
+      {test && <div role="status" className={`rounded-ui-sm px-3 py-2 text-xs ${test.ok ? 'bg-green-500/10 text-green-800 dark:text-green-300' : 'bg-red-500/10 text-red-800 dark:text-red-300'}`}>
+        {test.ok ? <>Conexão ok em {test.ms} ms{test.reply ? <> · resposta: “{test.reply}”</> : null}.</> : <>Falhou: {test.error}</>}
+      </div>}
+    </div>
+  );
+}
+
+export function AiSettings() {
+  const l = useLoad(() => get('/v1/platform/ai-settings'), []);
+  if (!l.data) return <Spinner />;
+  const d = l.data;
+  return (
+    <>
+      <PageHeader title="Inteligência artificial" subtitle="Provedor e chave do agente de atendimento (WhatsApp) e da transcrição de áudio. A chave fica cifrada e nunca é exibida de novo." />
+      <ErrorBox>{l.error}</ErrorBox>
+      <div className="mb-4 rounded-ui-sm bg-muted/60 p-3 text-xs text-muted-foreground">A configuração salva aqui vale na hora, sem reiniciar o servidor, e tem prioridade sobre as variáveis de ambiente. Cada pergunta do agente gasta tokens do provedor escolhido.</div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <AiCard key={`llm-${d.savedLlm?.provider}-${d.llm?.provider}`} kind="llm" title="Agente de atendimento" desc="Conversa com os clientes no WhatsApp (texto e imagens)." presets={d.presets.llm} active={d.llm} saved={d.savedLlm} onChanged={l.reload} />
+        <AiCard key={`stt-${d.savedStt?.provider}-${d.stt?.provider}`} kind="stt" title="Transcrição de áudio" desc="Transforma áudios dos clientes em texto (Whisper)." presets={d.presets.stt} active={d.stt} saved={d.savedStt} onChanged={l.reload} />
       </div>
     </>
   );

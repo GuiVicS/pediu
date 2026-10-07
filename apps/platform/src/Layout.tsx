@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { Activity, BellRing, Boxes, CreditCard, FileText, KeyRound, LayoutDashboard, Link2, LogOut, Menu, Rocket, ScrollText, Store, Truck, Rows3, type LucideIcon } from 'lucide-react';
+import { Activity, BellRing, Bot, Boxes, Images, CreditCard, FileText, KeyRound, LayoutDashboard, Link2, LogOut, Menu, Rocket, ScrollText, Store, Truck, Rows3, type LucideIcon } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { get } from '@/lib/api';
 import { cx } from '@/ui/kit';
@@ -11,7 +11,7 @@ import { useLoad } from '@/ui/bits';
 const NAV: { title: string; items: [string, string, LucideIcon][] }[] = [
   { title: 'Visão geral', items: [['/', 'Painel', LayoutDashboard], ['/lojas', 'Lojas', Store], ['/publicacoes', 'Publicações', Rocket]] },
   { title: 'Monitoramento', items: [['/desempenho', 'Desempenho', Rows3], ['/alertas', 'Alertas', BellRing], ['/saude', 'Saúde da API', Activity], ['/logs', 'Logs', ScrollText], ['/auditoria', 'Auditoria', FileText]] },
-  { title: 'Negócio', items: [['/assinaturas', 'Assinaturas', CreditCard], ['/versoes', 'Versões por loja', Boxes], ['/ifood', 'iFood (plataforma)', Truck], ['/mcp', 'Tokens do MCP', KeyRound], ['/rodape', 'Rodapé das lojas', Link2]] },
+  { title: 'Negócio', items: [['/assinaturas', 'Assinaturas', CreditCard], ['/versoes', 'Versões por loja', Boxes], ['/ifood', 'iFood (plataforma)', Truck], ['/mcp', 'Tokens do MCP', KeyRound], ['/rodape', 'Rodapé das lojas', Link2], ['/ia', 'Inteligência artificial', Bot], ['/banners', 'Banners', Images]] },
 ];
 
 export default function Layout() {

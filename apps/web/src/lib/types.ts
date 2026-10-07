@@ -43,7 +43,8 @@ export interface ApiOrder {
   id: string; number: number; channel: 'loja' | 'pdv' | 'garcom' | 'ifood'; type: OrderType; status: OrderStatus;
   customer_name: string; customer_phone: string; address: string; table_number: number | null; note: string;
   subtotal_cents: number; fee_cents: number; discount_cents: number; total_cents: number; payment_method: string; change_for_cents: number | null;
-  paid: boolean; paid_at: string | null; courier_id: string | null; created_at: string; accepted_at: string | null; ready_at: string | null; dispatched_at: string | null; delivered_at: string | null;
+  paid: boolean; paid_at: string | null; paid_type?: 'pix' | 'cash' | 'credit' | 'debit' | 'voucher' | null; payment_mode?: 'tela' | 'externo' | null;
+  cash_received_cents?: number | null; change_cents?: number | null; payment_ref?: string | null; courier_id: string | null; created_at: string; accepted_at: string | null; ready_at: string | null; dispatched_at: string | null; delivered_at: string | null;
   cancelled_at: string | null; cancel_reason: string | null; items: ApiOrderItem[];
 }
 

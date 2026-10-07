@@ -5,7 +5,7 @@ import { can as canRole, ROLE_PERMS, type Perm, type Role } from '@pediu/shared/
 import { get, post } from './api';
 import { useApplyPlatformTheme } from '@/ui/platformTheme';
 
-export interface Me { name: string; role: Role; storeId: string; store?: { slug: string; name: string; status: string } | null }
+export interface Me { name: string; role: Role; storeId: string; store?: { slug: string; name: string; status: string; logoUrl?: string; open?: boolean; openLabel?: string } | null }
 interface Ctx { me: Me | null; ready: boolean; login: (email: string, password: string) => Promise<void>; logout: () => Promise<void>; can: (p: Perm) => boolean; refresh: () => Promise<void> }
 const SessionCtx = createContext<Ctx | null>(null);
 

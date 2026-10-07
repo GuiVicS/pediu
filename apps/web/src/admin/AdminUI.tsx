@@ -1,10 +1,26 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { BadgePercent, CreditCard, Image, Layers, LayoutDashboard, ListPlus, Package, Palette, Printer, ShoppingBag, Star, Store as StoreIcon, type LucideIcon } from 'lucide-react';
 import { cx } from '@/ui/kit';
 
 const TITLE_ICONS: [string, LucideIcon][] = [['dashboard', LayoutDashboard], ['pedidos', ShoppingBag], ['produtos', Package], ['categorias', Layers], ['adicionais', ListPlus], ['destaques', Star], ['banners', Image], ['aparência', Palette], ['pagamentos', CreditCard], ['impressão', Printer], ['loja', StoreIcon], ['cupons', BadgePercent]];
 
+/** Elemento do topo do painel (desktop) onde o título de cada página é exibido, ao lado da busca e do usuário. */
+export const TopbarSlot = createContext<HTMLElement | null>(null);
+
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
+  const slot = useContext(TopbarSlot);
+  if (slot) {
+    return (
+      <>
+        {createPortal(<div className="hidden lg:block"><h1 className="text-[2rem] font-extrabold leading-tight tracking-tight text-foreground">{title}</h1>{subtitle && <p className="mt-0.5 text-base text-muted-foreground">{subtitle}</p>}</div>, slot)}
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3 lg:justify-end">
+          <div className="lg:hidden"><h1 className="text-xl font-bold text-foreground">{title}</h1>{subtitle && <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>}</div>
+          {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+        </div>
+      </>
+    );
+  }
   return (
     <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
       <div>

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { withPlatform, withTenant, type Q } from '@pediu/db';
 import { can, decryptSecret, encryptSecret } from '@pediu/shared';
 import type { Ctx } from './context.js';
+import { openCashSessionId } from './pdv.js';
 import { GatewayError, TXID_RE, mercadoPago, newTxid, sicoob, verifyMpSignature, type MercadoPagoApi, type MpCreds, type MpPayment, type SicoobApi, type SicoobCreds } from './gateways.js';
 import { audit, fail, parse } from './http.js';
 import { afterOrder } from './orderHooks.js';
@@ -75,6 +76,7 @@ export async function confirmPayment(ctx: Ctx, paymentId: string, paidAmountCent
     const late = p.order_status === 'cancelado';
     await q`update order_payments set status = 'aprovado', paid_at = now(), external_id = coalesce(external_id, ${externalId ?? null}) where id = ${paymentId}`;
     if (!late) {
+      await q`update orders set paid_type = ${p.method === 'pix' ? 'pix' : 'credit'}, payment_mode = 'tela' where id = ${p.order_id}`;
       await q`update orders set paid = true, paid_at = now(), paid_method = ${label}, payment_method = ${label},
               status = case when status = 'aguardando' then 'novo' when type = 'mesa' then 'entregue' else status end,
               delivered_at = case when type = 'mesa' and status <> 'aguardando' then now() else delivered_at end where id = ${p.order_id}`;
@@ -204,6 +206,7 @@ export function paymentRoutes(app: FastifyInstance, ctx: Ctx) {
     if (o.status === 'cancelado') return fail(reply, 422, 'cancelled', 'Pedido cancelado.');
     try {
       const slug = (await withTenant(ctx.pools, s.tenantId, (q) => q`select slug from stores where id = ${s.storeId}`))[0]!.slug as string;
+      await withTenant(ctx.pools, s.tenantId, async (q) => { const sid = await openCashSessionId(q, s.storeId, s.staffId); if (sid) await q`update orders set cash_session_id = coalesce(cash_session_id, ${sid}), paid_by = ${s.staffId} where id = ${id} and not paid`; });   // a cobrança entra no turno de quem a iniciou
       const started = await startOnlinePayment(ctx, { tenantId: s.tenantId, storeId: s.storeId, orderId: id, orderNumber: o.number, amountCents: o.total_cents, slug, method: 'pix', gateway: b.gateway, customer: { name: o.customer_name || 'Cliente' } });
       return reply.status(201).send(started);
     } catch (e) { return e instanceof GatewayError ? fail(reply, e.status === 409 ? 409 : 502, 'gateway_error', e.message) : (() => { throw e; })(); }

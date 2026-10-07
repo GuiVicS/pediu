@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Mail, Phone, Search } from 'lucide-react';
 import { get, put } from '@/lib/api';
 import { brl } from '@/lib/format';
@@ -13,7 +14,8 @@ const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('pt-
 
 /** Clientes que criaram conta na loja (login por e-mail): contato, pedidos e quanto já gastaram. */
 export default function CustomersAdmin() {
-  const [q, setQ] = useState(''); const [term, setTerm] = useState('');
+  const [params] = useSearchParams();
+  const [q, setQ] = useState(params.get('q') ?? ''); const [term, setTerm] = useState((params.get('q') ?? '').trim());
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState<{ total: number; customers: Customer[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
