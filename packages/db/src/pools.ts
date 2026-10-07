@@ -6,12 +6,18 @@ export type { Pool, Pools, Q } from './types.js';
 export interface PoolUrls { app: string; platform: string; mcp: string }
 
 /**
+ * O código envia JSON já serializado (`${JSON.stringify(x)}::jsonb`). O serializador padrão do postgres.js serializa DE NOVO
+ * strings enviadas a jsonb, gravando uma string JSON em vez de um objeto/array (configs, tema, events...). Strings passam direto.
+ */
+const types = { json: { to: 114, from: [114, 3802], serialize: (x: unknown) => (typeof x === 'string' ? x : JSON.stringify(x)), parse: (x: string) => JSON.parse(x) } };
+
+/**
  * Um pool por role do Postgres (app_api, platform_api, mcp_agent), cada um com a sua string de conexão.
  * `prepare: false` é obrigatório no pooler em modo transação do Supabase (porta 6543).
  */
 export function createPools(urls: PoolUrls, max = 10): Pools {
   const mk = (url: string): { pool: Pool; end: () => Promise<void> } => {
-    const sql = postgres(url, { max, prepare: false, idle_timeout: 20, connect_timeout: 10 });
+    const sql = postgres(url, { max, prepare: false, idle_timeout: 20, connect_timeout: 10, types });
     return { pool: { begin: (fn) => sql.begin((tx) => fn(tx as unknown as Q)) as Promise<never> }, end: () => sql.end() };
   };
   const app = mk(urls.app), platform = mk(urls.platform), mcp = mk(urls.mcp);
@@ -26,6 +32,6 @@ export const withMcp = <T>(pools: Pools, fn: (q: Q) => Promise<T>) => pools.mcp.
 
 /** Pool de um único role (ex.: o MCP só recebe a conexão do mcp_agent, nunca a da plataforma). */
 export function createRolePool(url: string, max = 5): Pool & { close(): Promise<void> } {
-  const sql = postgres(url, { max, prepare: false, idle_timeout: 20, connect_timeout: 10 });
+  const sql = postgres(url, { max, prepare: false, idle_timeout: 20, connect_timeout: 10, types });
   return { begin: (fn) => sql.begin((tx) => fn(tx as unknown as Q)) as Promise<never>, close: () => sql.end() };
 }
