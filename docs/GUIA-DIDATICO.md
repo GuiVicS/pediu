@@ -777,7 +777,7 @@ Faça **como se fosse um cliente de verdade**, com a equipe acompanhando:
 |---|---|
 | `README.md` | Resumo do repositório e regras |
 | `docs/GUIA-DIDATICO.md` | Este guia (texto) |
-| `docs/GUIA-DIDATICO.html` | O mesmo guia em página única, com índice, fluxogramas e checklists clicáveis (abra no navegador; funciona offline) |
+| `docs/GUIA-DIDATICO.html` | O mesmo guia em página única: responsivo (celular, tablet, computador), tema da plataforma com **modo escuro**, índice, fluxogramas e checklists clicáveis. Abra no navegador; funciona offline. É **gerado** a partir deste `.md` pelo script do repositório do guia (`tools/build-html.mjs`) |
 | `docs/index.html` | Assistente de instalação e operação passo a passo (abre no navegador) |
 | `docs/PORTAINER-DEPLOY.md` | Hospedagem detalhada no Portainer |
 | `docs/DOMINIOS.md` | Domínios e HTTPS por hospedagem |
