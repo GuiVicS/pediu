@@ -14,13 +14,13 @@ export interface FeatureDef {
 
 export const FEATURES = [
   { key: 'whatsapp_support', label: 'Atendimento WhatsApp', description: 'Conecta a extensão ao WhatsApp Web do lojista.', available: true, requires: [] },
-  { key: 'quick_replies', label: 'Respostas rápidas', description: 'Modelos de resposta para horário, cardápio, entrega, pagamento e andamento do pedido.', available: false, requires: ['whatsapp_support'] },
-  { key: 'ai_agent', label: 'Agente de IA', description: 'Sugere respostas usando cardápio e pedidos reais da loja.', available: false, requires: ['whatsapp_support'] },
-  { key: 'auto_reply', label: 'Respostas automáticas', description: 'O agente envia a resposta sem revisão do operador.', available: false, requires: ['ai_agent'] },
-  { key: 'audio_transcription', label: 'Transcrição de áudio', description: 'Transcreve áudios dos clientes para o agente.', available: false, requires: ['ai_agent'] },
-  { key: 'image_analysis', label: 'Análise de imagens', description: 'Interpreta fotos, prints e comprovantes enviados pelo cliente.', available: false, requires: ['ai_agent'] },
-  { key: 'order_draft', label: 'Montagem de pedido', description: 'Monta rascunho e link de checkout a partir da conversa.', available: false, requires: ['ai_agent'] },
-  { key: 'broadcasts', label: 'Disparos', description: 'Envio de mensagens para clientes autorizados (fase posterior).', available: false, requires: ['whatsapp_support'] },
+  { key: 'quick_replies', label: 'Respostas rápidas', description: 'Modelos de resposta para horário, cardápio, entrega, pagamento e andamento do pedido.', available: true, requires: ['whatsapp_support'] },
+  { key: 'ai_agent', label: 'Agente de IA', description: 'Sugere respostas usando cardápio e pedidos reais da loja.', available: true, requires: ['whatsapp_support'] },
+  { key: 'auto_reply', label: 'Respostas automáticas', description: 'O agente envia a resposta sem revisão do operador.', available: true, requires: ['ai_agent'] },
+  { key: 'audio_transcription', label: 'Transcrição de áudio', description: 'Transcreve áudios dos clientes para o agente.', available: true, requires: ['ai_agent'] },
+  { key: 'image_analysis', label: 'Análise de imagens', description: 'Interpreta fotos, prints e comprovantes enviados pelo cliente.', available: true, requires: ['ai_agent'] },
+  { key: 'order_draft', label: 'Montagem de pedido', description: 'Monta rascunho e link de checkout a partir da conversa.', available: true, requires: ['ai_agent'] },
+  { key: 'broadcasts', label: 'Disparos', description: 'Envio de mensagens para clientes autorizados (fase posterior).', available: true, requires: ['whatsapp_support'] },
 ] as const satisfies readonly FeatureDef[];
 
 export type FeatureKey = (typeof FEATURES)[number]['key'];

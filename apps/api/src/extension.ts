@@ -2,7 +2,7 @@ import { randomInt } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest, preHandlerAsyncHookHandler } from 'fastify';
 import { z } from 'zod';
 import { withTenant } from '@pediu/db';
-import { generateToken, hashToken, type Role } from '@pediu/shared';
+import { generateToken, hashToken, type FeatureKey, type Role } from '@pediu/shared';
 import type { Ctx } from './context.js';
 import { audit, fail, parse } from './http.js';
 import { staffGuard } from './staff.js';
@@ -16,11 +16,12 @@ export interface ExtensionDevice { deviceId: string; staffId: string; tenantId: 
 declare module 'fastify' { interface FastifyRequest { extension?: ExtensionDevice } }
 
 /** Valida a credencial da extensão (Bearer) em cada chamada; a loja vem sempre dela, nunca do pedido. */
-export function extensionGuard(ctx: Ctx): preHandlerAsyncHookHandler {
+export function extensionGuard(ctx: Ctx, feature?: FeatureKey): preHandlerAsyncHookHandler {
   return async (req: FastifyRequest, reply) => {
     const m = /^Bearer (pext_[A-Za-z0-9_-]{20,100})$/.exec(String(req.headers.authorization ?? ''));
     const [r] = m ? await ctx.pools.app.begin((q) => q`select * from app.extension_device(${hashToken(m[1]!)}, ${ctx.clock.now().toISOString()}::timestamptz)`) : [];
     if (!r) return fail(reply, 401, 'unauthenticated', 'Extensão não conectada. Gere um novo código no painel.');
+    if (feature && !(await ctx.pools.app.begin((q) => q`select app.feature_on(${r.store_id}, ${feature}) as on`))[0]!.on) return fail(reply, 403, 'feature_disabled', 'Funcionalidade não liberada para esta loja.');
     req.extension = { deviceId: r.device_id, staffId: r.staff_id, tenantId: r.tenant_id, storeId: r.store_id, role: r.role, storeName: r.store_name };
   };
 }

@@ -14,6 +14,9 @@ export interface Ctx {
   cookieSecure: boolean;
   /** Envio de e-mail (código de acesso do cliente). Ausente = login de clientes indisponível. */
   mailer?: import('./mailer.js').Mailer;
+  /** IA do atendimento (chave só no servidor). Ausente = agente indisponível. */
+  llm?: import('./llm.js').Llm;
+  transcriber?: import('./llm.js').Transcriber;
   stripe?: import('./stripe.js').StripeClient;
   telemetry?: import('./telemetry.js').Telemetry;
   notifier?: import('./alerts.js').Notifier;

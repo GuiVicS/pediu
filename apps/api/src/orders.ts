@@ -20,7 +20,7 @@ const selection = z.array(z.object({ groupId: uuid, addonIds: z.array(uuid).max(
 const lineIn = z.object({ productId: uuid, qty: z.number().int().min(1).max(50), note: z.string().max(200).default(''), addons: selection });
 
 /** Calcula as linhas SEMPRE a partir do banco: do cliente só vêm ids e quantidades. */
-async function buildLines(q: Q, storeId: string, lines: z.infer<typeof lineIn>[]) {
+export async function buildLines(q: Q, storeId: string, lines: z.infer<typeof lineIn>[]) {
   const ids = [...new Set(lines.map((l) => l.productId))];
   const prods = await q`select p.id, p.name, p.price, p.active, p.available, c.print_zone_id, c.active as cat_active,
       coalesce((select array_agg(pg.group_id) from product_addon_groups pg where pg.product_id = p.id), '{}') as group_ids
