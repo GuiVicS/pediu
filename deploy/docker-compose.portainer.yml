@@ -1,0 +1,84 @@
+# Stack para Portainer (Repository). Passo a passo: veja o guia de hospedagem. Defina as variáveis em Stacks > Environment variables.
+name: pediu
+services:
+  api:
+    build: { context: ., target: api }
+    image: pediu-api:latest
+    environment:
+      PORT: "3000"
+      APP_DATABASE_URL: ${APP_DATABASE_URL}
+      PLATFORM_DATABASE_URL: ${PLATFORM_DATABASE_URL}
+      MCP_DATABASE_URL: ${MCP_DATABASE_URL}
+      SECRETS_KEYS: ${SECRETS_KEYS}
+      EDGE_SECRET: ${EDGE_SECRET}
+      BASE_DOMAIN: ${BASE_DOMAIN}
+      PUBLIC_API_URL: https://${API_HOST}
+      COOKIE_SECURE: "true"
+      TRUST_PROXY: "true"
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY:-}
+      SUPABASE_BUCKET: ${SUPABASE_BUCKET:-pediu-public}
+    volumes: ["uploads:/data/uploads"]   # usado só se NÃO houver Supabase Storage
+    restart: unless-stopped
+
+  edge:
+    build: { context: ., target: edge }
+    image: pediu-edge:latest
+    environment:
+      PORT: "3200"
+      API_URL: http://api:3000
+      EDGE_SECRET: ${EDGE_SECRET}
+      RELEASES_BASE_URL: ${RELEASES_BASE_URL:-}
+    depends_on: [api]
+    restart: unless-stopped
+
+  mcp:
+    build: { context: ., target: mcp }
+    image: pediu-mcp:latest
+    environment:
+      PORT: "3100"
+      MCP_DATABASE_URL: ${MCP_DATABASE_URL}
+      BASE_DOMAIN: ${BASE_DOMAIN}
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports: ["80:80", "443:443"]
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL}
+      API_HOST: ${API_HOST}
+      MCP_HOST: ${MCP_HOST}
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+    volumes: ["caddy_data:/data"]
+    depends_on: [api, edge, mcp]
+    restart: unless-stopped
+
+configs:
+  caddyfile:
+    content: |
+      {
+        email {$ACME_EMAIL}
+        on_demand_tls {
+          ask http://api:3000/v1/edge/tls-check
+        }
+      }
+      https:// {
+        tls { on_demand }
+        encode zstd gzip
+        reverse_proxy edge:3200 {
+          flush_interval -1
+          header_up X-Forwarded-Host {host}
+        }
+      }
+      {$API_HOST} {
+        encode zstd gzip
+        reverse_proxy api:3000 { flush_interval -1 }
+      }
+      {$MCP_HOST} {
+        reverse_proxy mcp:3100
+      }
+
+volumes: { uploads: {}, caddy_data: {} }
