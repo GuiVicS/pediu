@@ -26,7 +26,8 @@ const Env = z.object({
   // agente de atendimento (WhatsApp): sem ANTHROPIC_API_KEY o agente responde 503; sem TRANSCRIBE_* a transcrição fica indisponível
   ANTHROPIC_API_KEY: z.string().optional(),
   AGENT_MODEL: z.string().default('claude-haiku-4-5-20251001'),
-  TRANSCRIBE_URL: z.string().url().default('https://api.openai.com/v1/audio/transcriptions'),
+  // Whisper: API da OpenAI (informe só a chave) ou servidor próprio/Groq compatível com /audio/transcriptions (informe a URL; a chave é opcional)
+  TRANSCRIBE_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
   TRANSCRIBE_API_KEY: z.string().optional(),
   TRANSCRIBE_MODEL: z.string().default('whisper-1'),
   MAIL_FROM: z.string().default('Pediu Lanchou <nao-responda@pediulanchou.com.br>'),

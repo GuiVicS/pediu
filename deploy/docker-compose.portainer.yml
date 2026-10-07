@@ -30,7 +30,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       AGENT_MODEL: ${AGENT_MODEL:-claude-haiku-4-5-20251001}
       TRANSCRIBE_API_KEY: ${TRANSCRIBE_API_KEY:-}
-      TRANSCRIBE_URL: ${TRANSCRIBE_URL:-https://api.openai.com/v1/audio/transcriptions}
+      TRANSCRIBE_URL: ${TRANSCRIBE_URL:-}
       TRANSCRIBE_MODEL: ${TRANSCRIBE_MODEL:-whisper-1}
     volumes: ["uploads:/data/uploads"]   # usado só se NÃO houver Supabase Storage
     restart: unless-stopped

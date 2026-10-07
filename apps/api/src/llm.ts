@@ -31,15 +31,15 @@ export function anthropicLlm(o: { apiKey: string; model: string; fetch?: typeof 
   };
 }
 
-/** Transcrição por endpoint compatível com /audio/transcriptions (OpenAI e similares). */
-export function openAiTranscriber(o: { url: string; apiKey: string; model: string; fetch?: typeof fetch }): Transcriber {
+/** Transcrição Whisper por endpoint compatível com /audio/transcriptions (OpenAI, Groq, faster-whisper/whisper.cpp em servidor próprio). */
+export function openAiTranscriber(o: { url: string; apiKey?: string; model: string; fetch?: typeof fetch }): Transcriber {
   const f = o.fetch ?? fetch;
   return {
     async transcribe({ mimetype, data }) {
       const form = new FormData();
       form.set('model', o.model); form.set('language', 'pt');
       form.set('file', new Blob([new Uint8Array(data)], { type: mimetype }), mimetype.includes('ogg') ? 'audio.ogg' : 'audio.bin');
-      const r = await f(o.url, { method: 'POST', headers: { authorization: `Bearer ${o.apiKey}` }, body: form, signal: AbortSignal.timeout(60_000) });
+      const r = await f(o.url, { method: 'POST', headers: o.apiKey ? { authorization: `Bearer ${o.apiKey}` } : {}, body: form, signal: AbortSignal.timeout(60_000) });
       if (!r.ok) throw new Error(`STT ${r.status}`);
       return String(((await r.json()) as { text?: string }).text ?? '').trim();
     },

@@ -230,3 +230,6 @@ NÃO validado (pendências reais): (1) WhatsApp Web real com conta de teste (pay
 
 ### Identidade visual da extensão (2026-10-07)
 A plataforma se chama **PediuLanchou**. A extensão agora usa a marca: nome “PediuLanchou — Atendimento WhatsApp”, ícones 16/32/48/128 (a partir de `apps/web/public/brand/mark-512.png`), logo no popup, gradiente azul da marca no botão e no painel dentro do WhatsApp Web, rodapé “Desenvolvido com muita fome”. Arquivos: `apps/whatsapp-extension/icons`, `assets/logo.png`, `popup.html`, estilos em `src/bridge.ts`. Conferido por captura de tela no Chromium (popup e painel). Textos visíveis ao usuário usam “PediuLanchou”; o nome técnico `pediu` permanece em pacotes, cookies e variáveis.
+
+### Transcrição com Whisper (2026-10-07)
+Decisão do usuário: transcrição de áudio usa **Whisper**. O adaptador (`apps/api/src/llm.ts`) fala o protocolo `/audio/transcriptions` (idioma `pt`). Configuração: API da OpenAI → só `TRANSCRIBE_API_KEY` (modelo padrão `whisper-1`, ajustável em `TRANSCRIBE_MODEL`); servidor próprio ou Groq/faster-whisper/whisper.cpp → `TRANSCRIBE_URL` (chave opcional). Sem nenhum dos dois a transcrição responde 503. Não testado com Whisper real (só adaptador simulado); validar OGG/Opus do WhatsApp, tamanho (limite atual ~5 MB) e qualidade em português.

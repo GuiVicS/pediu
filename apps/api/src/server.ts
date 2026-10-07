@@ -16,7 +16,7 @@ const pools = createPools({ app: env.APP_DATABASE_URL, platform: env.PLATFORM_DA
 const telemetry = new Telemetry(pools);
 const mailer = env.SMTP_HOST ? smtpMailer({ host: env.SMTP_HOST, port: env.SMTP_PORT, secure: env.SMTP_SECURE === 'true', user: env.SMTP_USER, pass: env.SMTP_PASS, from: env.MAIL_FROM }) : undefined;
 const llm = env.ANTHROPIC_API_KEY ? anthropicLlm({ apiKey: env.ANTHROPIC_API_KEY, model: env.AGENT_MODEL }) : undefined;
-const transcriber = env.TRANSCRIBE_API_KEY ? openAiTranscriber({ url: env.TRANSCRIBE_URL, apiKey: env.TRANSCRIBE_API_KEY, model: env.TRANSCRIBE_MODEL }) : undefined;
+const transcriber = env.TRANSCRIBE_API_KEY || env.TRANSCRIBE_URL ? openAiTranscriber({ url: env.TRANSCRIBE_URL ?? 'https://api.openai.com/v1/audio/transcriptions', apiKey: env.TRANSCRIBE_API_KEY, model: env.TRANSCRIBE_MODEL }) : undefined;
 const ctx: Ctx = { pools, mailer, llm, transcriber, ring: env.ring, clock: systemClock, baseDomain: env.BASE_DOMAIN, cookieSecure: env.cookieSecure, publicUrl: env.PUBLIC_API_URL, telemetry, notifier: env.ALERT_WEBHOOK_URL ? webhookNotifier(env.ALERT_WEBHOOK_URL) : undefined };
 telemetry.start();
 const app = buildApp(ctx, { trustProxy: env.trustProxy, logger: true, platformUiDir: env.PLATFORM_UI_DIR });
