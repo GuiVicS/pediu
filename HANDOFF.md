@@ -167,3 +167,13 @@ Operação do ambiente local (somente nessa máquina): entrar em `C:\Users\thnka
 6. Seguir `docs/PORTAINER-DEPLOY.md`, ajustando para seis migrations e SMTP, e validar deploy num ambiente dedicado ao Pediu.
 
 Atualize este handoff após cada etapa com mudanças, testes efetivamente executados e pendências concretas. Evite marcar uma proposta como funcionalidade pronta.
+
+## Atualização final — plano do agente delivery (2026-10-07)
+
+O planejamento está concluído em `docs/PLANO-EXTENSAO-WHATSAPP.md`; **a implementação permanece pendente**. Esta atualização substitui os trechos anteriores que dizem que o planejamento ainda não existe ou que a Orbita só foi listada.
+
+Foi feita análise estática do manifesto, ponte, chat, respostas rápidas, transcrição e trechos do bundle de campanhas da Orbita, junto ao catálogo, pedidos, clientes e sessão do Pediu e documentação oficial WA-JS/Chrome. O histórico Claude não continha essa análise nem plano concluído.
+
+Escopo final confirmado pelo usuário: **agente de atendimento delivery ligado à sessão do lojista**, com transcrição de áudio, análise de imagens, contexto comercial real e **checklist no super admin para habilitar funcionalidades por loja**. Disparos são complemento posterior; manter foco no atendimento. A checklist também faz parte do plano e ainda não está implementada.
+
+Para continuar, leia o plano e comece pela etapa 1. Não retome a elaboração de uma arquitetura ampla de CRM/campanhas. Nenhum teste no WhatsApp real foi executado nesta passagem; alteração exclusivamente documental.
