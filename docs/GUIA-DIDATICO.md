@@ -776,7 +776,8 @@ Faça **como se fosse um cliente de verdade**, com a equipe acompanhando:
 | Documento | Conteúdo |
 |---|---|
 | `README.md` | Resumo do repositório e regras |
-| `docs/GUIA-DIDATICO.md` | Este guia |
+| `docs/GUIA-DIDATICO.md` | Este guia (texto) |
+| `docs/GUIA-DIDATICO.html` | O mesmo guia em página única, com índice, fluxogramas e checklists clicáveis (abra no navegador; funciona offline) |
 | `docs/index.html` | Assistente de instalação e operação passo a passo (abre no navegador) |
 | `docs/PORTAINER-DEPLOY.md` | Hospedagem detalhada no Portainer |
 | `docs/DOMINIOS.md` | Domínios e HTTPS por hospedagem |
