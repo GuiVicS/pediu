@@ -9,6 +9,7 @@ import { CustomerProvider, useCustomer } from '@/lib/customer';
 import { storeSlug } from '@/lib/session';
 import { DLink } from '@/lib/nav';
 import { brl } from '@/lib/format';
+import DraftLoader from './DraftLoader';
 import { StoreContext, normalizeMenu, useStore as useStoreCtx, type Menu } from './StoreContext';
 import { CartPanel } from './CartPanel';
 import { CheckoutModal } from './CheckoutModal';
@@ -56,6 +57,7 @@ export default function StoreLayout() {
       <CartProvider>
         <div className="min-h-screen bg-t-bg font-t text-t-fg" style={theme.backgroundImageUrl ? { backgroundImage: `url(${theme.backgroundImageUrl})`, backgroundSize: 'cover', backgroundAttachment: 'fixed' } : undefined}>
           {preview && <div className="bg-amber-500/90 px-3 py-1 text-center text-[11px] font-semibold text-black">Pré-visualização</div>}
+          <DraftLoader />
           <Header />
           <main className="pb-24 md:pb-10"><Outlet /></main>
           <Footer />

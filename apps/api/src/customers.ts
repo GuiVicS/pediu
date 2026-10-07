@@ -171,7 +171,7 @@ export function customerRoutes(app: FastifyInstance, ctx: Ctx) {
       const [t] = await q`select count(*)::int as n from store_customers c where c.store_id = ${s.storeId}
                           and (${pat}::text is null or c.name ilike ${pat} or c.email ilike ${pat} or c.phone ilike ${pat})`;
       const customers = await q`
-        select c.id, c.name, c.email, c.phone, c.created_at, c.last_login_at,
+        select c.id, c.name, c.email, c.phone, c.created_at, c.last_login_at, c.marketing_opt_in,
                count(o.id) filter (where o.status <> 'cancelado')::int as orders_count,
                coalesce(sum(o.total_cents) filter (where o.status not in ('cancelado', 'aguardando')), 0)::int as spent_cents,
                max(o.created_at) as last_order_at

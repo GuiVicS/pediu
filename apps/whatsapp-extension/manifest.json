@@ -5,7 +5,8 @@
   "description": "Conecta o WhatsApp Web do lojista ao atendimento do Pediu.",
   "minimum_chrome_version": "120",
   "permissions": [
-    "storage"
+    "storage",
+    "alarms"
   ],
   "host_permissions": [
     "https://web.whatsapp.com/*"

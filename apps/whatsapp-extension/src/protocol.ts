@@ -9,6 +9,8 @@ export type MediaKind = 'text' | 'audio' | 'image' | 'other';
 
 export interface IncomingMessage {
   id: string;
+  /** nome de exibição do contato, quando o WhatsApp informa */
+  name: string;
   chatId: string;
   fromMe: boolean;
   kind: MediaKind;
@@ -47,6 +49,7 @@ export function normalizeMessage(raw: unknown): IncomingMessage | null {
   const body = kind === 'text' ? r.body : r.caption;
   return {
     id,
+    name: String(r.notifyName ?? r.sender?.pushname ?? r.sender?.name ?? '').slice(0, 80),
     chatId,
     fromMe: r.id?.fromMe === true || r.fromMe === true,
     kind,
@@ -74,6 +77,7 @@ export function parseEnvelope(data: unknown): BridgeEvent | null {
       type: 'message',
       message: {
         id: m.id,
+        name: typeof m.name === 'string' ? m.name.slice(0, 80) : '',
         chatId: m.chatId,
         fromMe: m.fromMe === true,
         kind: m.kind,
@@ -84,4 +88,36 @@ export function parseEnvelope(data: unknown): BridgeEvent | null {
     };
   }
   return null;
+}
+
+// ---- comandos (extensão -> WhatsApp Web). Lista fechada: enviar texto, baixar mídia de uma mensagem e ler a conversa aberta ----
+export const CMD_CHANNEL = 'pediu-wa-cmd/v1';
+export const REPLY_CHANNEL = 'pediu-wa-reply/v1';
+/** conversas individuais apenas (grupos e status nunca são atendidos nem recebem envio) */
+export const CHAT_ID = /^[0-9]{5,20}@(c\.us|lid)$/;
+export const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
+
+export type Command =
+  | { type: 'send'; chatId: string; text: string; newChat?: boolean }
+  | { type: 'media'; messageId: string }
+  | { type: 'active' };
+export interface CommandEnvelope { channel: typeof CMD_CHANNEL; id: string; command: Command }
+export interface ReplyEnvelope { channel: typeof REPLY_CHANNEL; id: string; ok: boolean; data?: unknown; error?: string }
+
+export function parseCommand(data: unknown): { id: string; command: Command } | null {
+  if (!data || typeof data !== 'object') return null;
+  const d = data as Record<string, any>;
+  if (d.channel !== CMD_CHANNEL || typeof d.id !== 'string' || d.id.length > 64 || !d.command || typeof d.command !== 'object') return null;
+  const c = d.command as Record<string, any>;
+  if (c.type === 'send' && typeof c.chatId === 'string' && CHAT_ID.test(c.chatId) && typeof c.text === 'string' && c.text.trim() && c.text.length <= MAX_TEXT) return { id: d.id, command: { type: 'send', chatId: c.chatId, text: c.text, newChat: c.newChat === true } };
+  if (c.type === 'media' && typeof c.messageId === 'string' && c.messageId.length <= 200) return { id: d.id, command: { type: 'media', messageId: c.messageId } };
+  if (c.type === 'active') return { id: d.id, command: { type: 'active' } };
+  return null;
+}
+
+export function parseReply(data: unknown): ReplyEnvelope | null {
+  if (!data || typeof data !== 'object') return null;
+  const d = data as Record<string, any>;
+  if (d.channel !== REPLY_CHANNEL || typeof d.id !== 'string' || typeof d.ok !== 'boolean') return null;
+  return { channel: REPLY_CHANNEL, id: d.id, ok: d.ok, data: d.data, error: typeof d.error === 'string' ? d.error.slice(0, 200) : undefined };
 }

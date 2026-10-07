@@ -1,6 +1,6 @@
 ﻿# Plano — agente de atendimento delivery pela extensão
 
-Atualizado em 2026-10-07. Planejamento concluído; implementação pendente.
+Atualizado em 2026-10-07. Planejamento concluído; **etapas 1 a 7 implementadas no código** (ver “Estado da implementação” no fim). Faltam validações com serviços reais.
 
 ## Escopo confirmado
 
@@ -109,3 +109,17 @@ Critério final: lojista conectado atende cliente por texto/áudio/imagem, com c
 Documentação WA-JS consultada identifica v4.6.1; fixar versão e testar readiness, eventos e ids antes de implementar. `chat.new_message` foi observado na Orbita; confirmar payload na versão escolhida. A referência Orbita permanece local e não acompanha o Git.
 
 Próxima ação: executar etapa 1 e seguir este escopo, registrando entregas e testes no handoff.
+
+## Estado da implementação
+
+| Etapa | Código | Verificado |
+|---|---|---|
+| 1 Extensão e ponte | `apps/whatsapp-extension` (MV3, WA-JS 4.6.1) | Carregada no Chromium com página falsa de `web.whatsapp.com`: WA-JS 4.6.1 injeta, evento → ponte → worker → API simulada → sugestão → painel → envio. **Não** testado com WhatsApp Web real/conta real. |
+| 2 Pareamento e checklist | `extension.ts`, `store_features`, tela do super admin | Testes de API (replay, expiração, logout, revogação, isolamento) |
+| 3 Catálogo, respostas rápidas, pedidos | `extensionStore.ts`, `storeInfo.ts`, painel “Atendimento WhatsApp” | Testes de API; pedido só com número + telefone conferindo |
+| 4 Agente assistido, áudio, imagens | `agent.ts`, `llm.ts` | Testes com IA simulada; **sem chamada real** à Anthropic/transcrição |
+| 5 Rascunho e link | `createDraft`, `DraftLoader` (vitrine), `?rascunho=` | Testes de API; carrinho da vitrine não testado no navegador |
+| 6 Automático e humano | `agent/send-check`, `conversations`, `flow.ts` | Testes de API e do fluxo (eco, obsoleta, pausa por atendente) |
+| 7 Disparos | `broadcasts.ts`, `broadcast.ts` | Testes de API e do ciclo; consentimento marcado pelo lojista em Clientes |
+
+Decisões: nenhum provedor foi fixado no plano; implementados adaptadores Anthropic (agente, com visão) e endpoint compatível com `/audio/transcriptions` (transcrição). Configuração por variáveis `ANTHROPIC_API_KEY`, `AGENT_MODEL`, `TRANSCRIBE_*`. Mensagens da conversa não são gravadas no servidor (só estado por conversa, auditoria e rascunhos); áudio/imagem não são guardados.

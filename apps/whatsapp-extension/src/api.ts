@@ -33,3 +33,30 @@ export async function checkLink(f: Fetch, link: Link): Promise<{ state: 'ok'; fe
     return { state: 'ok', features: ((await r.json()) as { features: string[] }).features };
   } catch { return { state: 'offline' }; }
 }
+
+// ---- chamadas autenticadas do atendimento ----
+export interface AgentMessage { id: string; fromMe: boolean; kind: string; text: string; image?: { mimetype: string; data: string } }
+export interface AgentReply { skipped?: string; text?: string; handoff?: boolean; handoffReason?: string; draftLink?: string; messageId?: string; autoAllowed?: boolean }
+export interface QuickReply { id: string; title: string; text: string }
+export interface Conversation { mode: 'off' | 'assisted' | 'auto'; humanPaused: boolean }
+
+export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
+
+export function client(f: Fetch, link: Link) {
+  const call = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+    const r = await f(`${link.apiBase}${path}`, { method, headers: { authorization: `Bearer ${link.token}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) }, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (!r.ok) throw new ApiError(r.status, await errorOf(r));
+    return (await r.json()) as T;
+  };
+  return {
+    agentReply: (chatId: string, customerName: string, messages: AgentMessage[]) => call<AgentReply>('POST', '/v1/extension/agent/reply', { chatId, customerName, messages }),
+    sendCheck: (chatId: string, messageId: string) => call<{ allowed: boolean; reason?: string }>('POST', '/v1/extension/agent/send-check', { chatId, messageId }),
+    transcribe: (mimetype: string, data: string) => call<{ text: string }>('POST', '/v1/extension/agent/transcribe', { mimetype, data }),
+    getConversation: (chatId: string) => call<Conversation>('GET', `/v1/extension/conversations/${encodeURIComponent(chatId)}`),
+    setConversation: (chatId: string, patch: Partial<Conversation>) => call<{ ok: true }>('PUT', `/v1/extension/conversations/${encodeURIComponent(chatId)}`, patch),
+    quickReplies: (customerName: string) => call<{ replies: QuickReply[] }>('GET', `/v1/extension/quick-replies?customerName=${encodeURIComponent(customerName)}`),
+    nextBroadcast: () => call<{ none: true; waitSeconds: number } | { none: false; recipientId: string; phone: string; text: string }>('POST', '/v1/extension/broadcasts/next', {}),
+    broadcastResult: (id: string, status: 'enviada' | 'falhou', error?: string) => call<{ ok: true }>('POST', `/v1/extension/broadcasts/${id}/result`, { status, error }),
+  };
+}
+export type ApiClient = ReturnType<typeof client>;

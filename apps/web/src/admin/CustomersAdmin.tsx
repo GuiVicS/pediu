@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, Mail, Phone, Search } from 'lucide-react';
-import { get } from '@/lib/api';
+import { get, put } from '@/lib/api';
 import { brl } from '@/lib/format';
 import { ErrorBox, Spinner } from '@/ui/misc';
 import { Empty, PageHeader } from './AdminUI';
 
-interface Customer { id: string; name: string; email: string; phone: string; created_at: string; last_login_at: string | null; orders_count: number; spent_cents: number; last_order_at: string | null }
+interface Customer { id: string; name: string; email: string; phone: string; created_at: string; last_login_at: string | null; marketing_opt_in: boolean; orders_count: number; spent_cents: number; last_order_at: string | null }
 interface Order { number: number; status: string; type: string; total_cents: number; created_at: string }
 const PAGE = 50;
 const STATUS: Record<string, string> = { aguardando: 'Aguardando pagamento', novo: 'Recebido', preparo: 'Em preparo', pronto: 'Pronto', saiu: 'Saiu para entrega', entregue: 'Entregue', cancelado: 'Cancelado' };
@@ -58,6 +58,7 @@ export default function CustomersAdmin() {
               </button>
               {open === c.id && (
                 <div className="bg-muted/40 px-3 py-2 pl-8 text-xs">
+                  <label className="mb-2 flex items-center gap-2"><input type="checkbox" checked={c.marketing_opt_in} onChange={async (e) => { try { await put(`/v1/staff/customers/${c.id}/marketing`, { optIn: e.target.checked }); await load(); } catch (err) { setError((err as Error).message); } }} /> Aceitou receber mensagens da loja por WhatsApp (marque só com consentimento)</label>
                   {!orders[c.id] ? <span className="text-muted-foreground">Carregando…</span> : orders[c.id]!.length === 0 ? <span className="text-muted-foreground">Nenhum pedido feito na conta.</span> : (
                     <ul className="space-y-1">{orders[c.id]!.map((o) => (
                       <li key={o.number} className="flex flex-wrap justify-between gap-2"><span><b>#{o.number}</b> · {STATUS[o.status] ?? o.status} · {new Date(o.created_at).toLocaleString('pt-BR')}</span><span className="font-semibold">{brl(o.total_cents / 100)}</span></li>
