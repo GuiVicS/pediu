@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { withPlatform, type Q } from '@pediu/db';
-import { checkTransition, generateToken, hashPassword, Slug, STORE_STATUS, type StoreStatus } from '@pediu/shared';
+import { withPlatform, withTenant, type Q } from '@pediu/db';
+import { applyFeatureChanges, checkTransition, FEATURES, generateToken, hashPassword, Slug, STORE_STATUS, type StoreStatus } from '@pediu/shared';
 import type { Ctx } from './context.js';
 import { audit, fail, parse } from './http.js';
 import { guard } from './session.js';
+import { staffGuard } from './staff.js';
 
 const uuid = z.string().uuid();
 const isUnique = (e: unknown) => (e as { code?: string })?.code === '23505';
@@ -150,5 +151,51 @@ export function storeRoutes(app: FastifyInstance, ctx: Ctx) {
       return r.length;
     });
     return n ? { ok: true } : fail(reply, 404, 'not_found', 'Token não encontrado ou já revogado.');
+  });
+}
+
+// ---- checklist de funcionalidades por loja ----
+async function featureState(q: Q, storeId: string): Promise<Record<string, boolean>> {
+  const rows = await q`select feature, enabled from store_features where store_id = ${storeId}`;
+  return Object.fromEntries(rows.map((r) => [r.feature as string, r.enabled as boolean]));
+}
+
+export function featureRoutes(app: FastifyInstance, ctx: Ctx) {
+  app.get('/v1/platform/stores/:id/features', { preHandler: guard(ctx) }, async (req, reply) => {
+    const id = parse(uuid, (req.params as { id: string }).id, reply); if (!id) return;
+    const out = await withPlatform(ctx.pools, async (q) => {
+      const [s] = await q`select id from stores where id = ${id}`;
+      return s ? await featureState(q, id) : null;
+    });
+    if (!out) return fail(reply, 404, 'not_found', 'Loja não encontrada.');
+    return { features: FEATURES.map((f) => ({ ...f, enabled: out[f.key] === true })) };
+  });
+
+  app.put('/v1/platform/stores/:id/features', { preHandler: guard(ctx, { stepUp: true }) }, async (req, reply) => {
+    const id = parse(uuid, (req.params as { id: string }).id, reply); if (!id) return;
+    const b = parse(z.object({ changes: z.record(z.string().max(40), z.boolean()).refine((c) => Object.keys(c).length > 0, 'Nenhuma alteração.') }), req.body, reply); if (!b) return;
+    const out = await withPlatform(ctx.pools, async (q) => {
+      const [s] = await q`select id, tenant_id from stores where id = ${id} for update`;
+      if (!s) return { ok: false as const, status: 404, error: 'Loja não encontrada.' };
+      const before = await featureState(q, id);
+      const r = applyFeatureChanges(before, b.changes);
+      if (!r.ok) return { ok: false as const, status: 422, error: r.error };
+      const changed = FEATURES.filter((f) => (before[f.key] === true) !== r.state[f.key]);
+      for (const f of changed) {
+        await q`insert into store_features (store_id, tenant_id, feature, enabled, updated_by) values (${id}, ${s.tenant_id}, ${f.key}, ${r.state[f.key]!}, ${req.session!.adminId})
+                on conflict (store_id, feature) do update set enabled = excluded.enabled, updated_by = excluded.updated_by, updated_at = now()`;
+        await audit(q, { actorKind: 'superadmin', actorId: req.session!.adminId, tenantId: s.tenant_id, storeId: id, action: 'store.feature', ip: req.ip, before: { enabled: before[f.key] === true }, after: { enabled: r.state[f.key] }, meta: { feature: f.key } });
+      }
+      return { ok: true as const, state: r.state };
+    });
+    if (!out.ok) return fail(reply, out.status, out.status === 404 ? 'not_found' : 'feature_denied', out.error);
+    return { features: FEATURES.map((f) => ({ ...f, enabled: out.state[f.key] === true })) };
+  });
+
+  // a loja (equipe) consulta o que está liberado; o backend continua validando em cada uso
+  app.get('/v1/staff/features', { preHandler: staffGuard(ctx, 'admin.pedidos') }, async (req) => {
+    const s = req.staff!;
+    const rows = await withTenant(ctx.pools, s.tenantId, (q) => q`select feature from store_features where store_id = ${s.storeId} and enabled`);
+    return { enabled: rows.map((r) => r.feature as string) };
   });
 }

@@ -193,3 +193,13 @@ Feito:
 Validação executada nesta passagem: `tsc` da extensão sem erros, 5 testes unitários do protocolo aprovados, build gera `dist/`. **Não testado no WhatsApp Web real**: o payload de `chat.new_message`, `WPP.isReady`/`webpack.onReady` e o campo de versão em 4.6.1 vieram da Orbita/documentação e precisam ser confirmados com conta de teste. Não foi executado `npm run check` raiz completo nem a suíte da API.
 
 Pendente da etapa 1 (critério: conta de teste recebe texto/áudio/imagem e reconecta): teste manual no Chrome, confirmar eventos, download de mídia por partes (`chat.downloadMedia`) e teste de reconexão. Depois, etapa 2 (pareamento com sessão + checklist no super admin). A Orbita não está acessível neste ambiente; o código acima não copia nada dela.
+
+### Etapa 2 (parte 1) — checklist de funcionalidades por loja (implementado)
+
+- `packages/shared/src/features.ts`: catálogo (atendimento WhatsApp, respostas rápidas, agente IA, respostas automáticas, transcrição, imagens, montagem de pedido, disparos), flag `available` e dependências; `applyFeatureChanges` impede ativar função indisponível/sem dependência e desativa dependentes em cascata. Hoje só `whatsapp_support` é ativável; mudar `available` conforme cada recurso for entregue.
+- Migration `20261011000001_store_features.sql`: tabela `store_features` com RLS (plataforma escreve; loja só lê a própria).
+- API: `GET/PUT /v1/platform/stores/:id/features` (PUT exige step-up e grava auditoria `store.feature`), `GET /v1/staff/features` (liberações da loja do lojista).
+- Super admin: seção “Funcionalidades disponíveis” no detalhe da loja (`Stores.tsx`), com indisponíveis desabilitadas.
+- Decisão: a checklist é a única fonte para estas funcionalidades; `plans.modules` não as controla (evita fontes contraditórias).
+- Validado nesta passagem: `npm run check` (sem erros), SQL (migração + RLS existentes passam), `apps/api/test/stores.test.ts` 7/7, `packages/shared/test/features.test.ts` 3/3. Não rodei a suíte completa da API nem testei a tela no navegador. Não há teste SQL de RLS específico para `store_features` ainda.
+- Pendente da etapa 2: pareamento extensão↔sessão do lojista (código de uso único, dispositivo, credencial restrita, revogação), e o backend deve checar `store_features` em cada uso.

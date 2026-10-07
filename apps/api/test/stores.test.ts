@@ -101,3 +101,23 @@ test('token limitado a lojas guarda a lista', async () => {
   const [db] = await env.pools.platform.begin((q) => q`select store_limit from mcp_tokens where id = ${r.body.id}`);
   assert.deepEqual(db!.store_limit, [s.id]);
 });
+
+test('checklist de funcionalidades: exige step-up, bloqueia indisponível e audita', async () => {
+  const { body: s } = await novaLoja('checklist-ok');
+  const id = s.id as string;
+  const lista = await c.get(`/v1/platform/stores/${id}/features`);
+  assert.equal(lista.status, 200);
+  assert.ok(lista.body.features.every((f: any) => f.enabled === false));
+
+  await stepUp(env, c, EMAIL);
+  const indisponivel = await c.put(`/v1/platform/stores/${id}/features`, { changes: { ai_agent: true } });
+  assert.equal(indisponivel.status, 422);
+  assert.equal((await c.put(`/v1/platform/stores/${id}/features`, { changes: { inexistente: true } })).status, 422);
+
+  const ok = await c.put(`/v1/platform/stores/${id}/features`, { changes: { whatsapp_support: true } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.features.find((f: any) => f.key === 'whatsapp_support').enabled, true);
+  const audit = await env.pools.platform.begin((q) => q`select meta from audit_logs where store_id = ${id} and action = 'store.feature'`);
+  assert.equal(audit.length, 1);
+  assert.equal(audit[0]!.meta.feature, 'whatsapp_support');
+});

@@ -46,6 +46,7 @@ export function StoreDetail() {
   const a = useLoad(() => get(`/v1/platform/analytics/stores/${id}${qs({ days })}`), [id, days], 60_000);
   const act2 = useLoad(() => get(`/v1/platform/stores/${id}/activity?limit=60`), [id], 30_000);
   const rel = useLoad(() => get('/v1/platform/releases?app=web'), []);
+  const feat = useLoad(() => get(`/v1/platform/stores/${id}/features`), [id]);
   const [statusModal, setStatusModal] = useState<string | null>(null); const [reason, setReason] = useState(''); const [waiver, setWaiver] = useState('');
   const [adminModal, setAdminModal] = useState(false); const [adm, setAdm] = useState({ name: '', email: '', password: '' });
   const [pinModal, setPinModal] = useState(false); const [pin, setPin] = useState({ version: '', channel: 'estavel' });
@@ -85,6 +86,16 @@ export function StoreDetail() {
         <section className="card p-4"><h2 className="mb-2 font-semibold">Atividade recente</h2>
           <div className="max-h-96 divide-y divide-border overflow-y-auto">{act2.data?.items.map((i: any, k: number) => <div key={k} className="py-1.5 text-xs"><div className="flex items-center gap-2"><Badge cls={i.severity === 'error' ? 'bg-red-100 text-red-700' : i.severity === 'warn' ? 'bg-amber-100 text-amber-700' : undefined}>{i.source}</Badge><b>{i.event}</b><span className="ml-auto text-muted-foreground">{ago(i.at)}</span></div><div className="text-muted-foreground">{i.message}</div></div>)}{act2.data?.items.length === 0 && <p className="py-2 text-sm text-muted-foreground">Sem atividade.</p>}</div></section>
       </div>
+
+      <section className="card mt-5 p-4"><h2 className="mb-1 font-semibold">Funcionalidades disponíveis</h2>
+        <p className="mb-3 text-xs text-muted-foreground">Libera o uso por loja (atendimento WhatsApp e agente). Função ainda não construída aparece indisponível. Cada alteração pede o autenticador.</p>
+        <ErrorBox>{feat.error}</ErrorBox>
+        {!feat.data ? <Spinner /> : <div className="divide-y divide-border">{feat.data.features.map((f: any) => (
+          <label key={f.key} className={`flex items-start gap-3 py-2 text-sm ${f.available ? 'cursor-pointer' : 'opacity-60'}`}>
+            <input type="checkbox" className="mt-1" checked={f.enabled} disabled={act.busy || (!f.available && !f.enabled)}
+              onChange={(e) => act.run(async () => { await stepUp(() => put(`/v1/platform/stores/${id}/features`, { changes: { [f.key]: e.target.checked } })); toast(`${f.label}: ${e.target.checked ? 'liberada' : 'desativada'}`); await feat.reload(); })} />
+            <span><b>{f.label}</b>{!f.available && <Badge> indisponível</Badge>}<span className="block text-xs text-muted-foreground">{f.description}{f.requires.length > 0 && ` Requer: ${f.requires.map((r: string) => feat.data.features.find((x: any) => x.key === r)?.label).join(', ')}.`}</span></span>
+          </label>))}</div>}</section>
 
       <Modal open={!!statusModal} onClose={() => setStatusModal(null)} title={`Mudar para ${STORE_STATUS_LABEL[statusModal ?? ''] ?? ''}`} footer={<><button className="btn-ghost" onClick={() => setStatusModal(null)}>Cancelar</button><button className="btn" disabled={act.busy} onClick={() => change(statusModal!)}>Confirmar (pede o autenticador)</button></>}>
         <div className="space-y-3 text-sm"><ErrorBox>{act.error}</ErrorBox>

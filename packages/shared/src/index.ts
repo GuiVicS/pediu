@@ -6,3 +6,4 @@ export * from './schemas.js';
 export * from './pricing.js';
 export * from './opening-hours.js';
 export * from './order-flow.js';
+export * from './features.js';

@@ -19,7 +19,7 @@ import { uploadRoutes } from './uploads.js';
 import { existsSync } from 'node:fs';
 import fastifyStatic from '@fastify/static';
 import { staffRoutes } from './staff.js';
-import { storeRoutes } from './stores.js';
+import { featureRoutes, storeRoutes } from './stores.js';
 
 export function buildApp(ctx: Ctx, opts: { trustProxy?: boolean; logger?: boolean; platformUiDir?: string } = {}) {
   const app = Fastify({ logger: opts.logger ?? false, trustProxy: opts.trustProxy ?? false, bodyLimit: 1_000_000 });
@@ -55,6 +55,7 @@ export function buildApp(ctx: Ctx, opts: { trustProxy?: boolean; logger?: boolea
   app.get('/health', async () => ({ ok: true }));
   authRoutes(app, ctx);
   storeRoutes(app, ctx);
+  featureRoutes(app, ctx);
   billingRoutes(app, ctx);
   analyticsRoutes(app, ctx);
   staffDashboardRoutes(app, ctx);
