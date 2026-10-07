@@ -16,6 +16,7 @@ await build({
 const wajs = ['node_modules', '../../node_modules'].map((d) => join(root, d, '@wppconnect/wa-js/dist/wppconnect-wa.js')).find((f) => existsSync(f));
 if (!wajs) throw new Error('@wppconnect/wa-js não instalado');
 cpSync(wajs, join(out, 'wppconnect-wa.js'));
+for (const d of ['icons', 'assets']) cpSync(join(root, d), join(out, d), { recursive: true });
 cpSync(join(root, 'popup.html'), join(out, 'popup.html'));
 cpSync(join(root, 'manifest.json'), join(out, 'manifest.json'));
 console.log('extensão em', out);

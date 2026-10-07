@@ -51,7 +51,7 @@ async function deps(): Promise<Deps | null> {
       async send(chatId, text) { return (await callBridge<{ messageId: string }>({ type: 'send', chatId, text })).messageId; },
       media: (messageId) => callBridge({ type: 'media', messageId }),
     },
-    notify: (_c, text) => { void chrome.action.setBadgeText({ text: '!' }); void chrome.action.setTitle({ title: `Pediu — ${text}` }); },
+    notify: (_c, text) => { void chrome.action.setBadgeText({ text: '!' }); void chrome.action.setTitle({ title: `PediuLanchou — ${text}` }); },
   };
 }
 

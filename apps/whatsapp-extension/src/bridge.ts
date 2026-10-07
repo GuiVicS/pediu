@@ -48,7 +48,8 @@ const rpc = (m: Record<string, unknown>) => chrome.runtime.sendMessage(m).catch(
 const host = document.createElement('div');
 host.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:2147483647;font:13px system-ui;';
 const root = host.attachShadow({ mode: 'closed' });
-root.innerHTML = '<style>.b{background:#c0392b;color:#fff;border:0;border-radius:20px;padding:8px 14px;cursor:pointer}.p{width:320px;max-height:70vh;overflow:auto;background:#fff;color:#111;border:1px solid #ccc;border-radius:10px;padding:10px;margin-bottom:8px;box-shadow:0 4px 16px #0003}.p[hidden]{display:none}h4{margin:8px 0 4px}button.s{margin:2px 4px 2px 0;padding:3px 8px}pre{white-space:pre-wrap;margin:2px 0;font:inherit;background:#f4f4f4;padding:6px;border-radius:6px}.w{color:#b45309}</style><div class="p" id="p" hidden></div><button class="b" id="t">Pediu</button>';
+root.innerHTML = '<style>.b{display:flex;align-items:center;gap:6px;background:linear-gradient(90deg,#0072c6,#00b4f0);color:#fff;border:0;border-radius:22px;padding:6px 14px 6px 8px;cursor:pointer;font-weight:600}.b img{width:22px;height:22px;border-radius:6px}.hd{display:flex;align-items:center;gap:6px;color:#0072c6;font-weight:700}.hd img{width:20px;height:20px;border-radius:5px}button.s{background:#0a84e0;color:#fff;border:0;border-radius:6px}.p{width:320px;max-height:70vh;overflow:auto;background:#fff;color:#111;border:1px solid #ccc;border-radius:10px;padding:10px;margin-bottom:8px;box-shadow:0 4px 16px #0003}.p[hidden]{display:none}h4{margin:8px 0 4px}button.s{margin:2px 4px 2px 0;padding:4px 10px;cursor:pointer}pre{white-space:pre-wrap;margin:2px 0;font:inherit;background:#f4f4f4;padding:6px;border-radius:6px}.w{color:#b45309}</style><div class="p" id="p" hidden></div><button class="b" id="t"><img alt="">PediuLanchou</button>';
+(root.querySelector('#t img') as HTMLImageElement).src = chrome.runtime.getURL('icons/icon-48.png');
 const panel = root.getElementById('p') as HTMLElement;
 root.getElementById('t')!.addEventListener('click', () => { panel.hidden = !panel.hidden; if (!panel.hidden) void render(); });
 
@@ -60,7 +61,7 @@ async function render() {
   panel.replaceChildren();
   if (!s || s.error) return void panel.append(el('div', 'Extensão indisponível. Recarregue a página.', 'w'));
   if (!s.linked) return void panel.append(el('div', 'Não conectado. Clique no ícone da extensão e informe o código gerado no painel da loja.', 'w'));
-  panel.append(el('b', `Pediu · ${s.storeName}`));
+  const hd = el('div', '', 'hd'); const ic = document.createElement('img'); ic.src = chrome.runtime.getURL('icons/icon-48.png'); hd.append(ic, el('span', `PediuLanchou · ${s.storeName}`)); panel.append(hd);
   if (!activeChat) return void panel.append(el('div', 'Abra uma conversa individual para usar o atendimento.'));
   const send1 = (text: string) => rpc({ type: 'panel.send', chatId: activeChat, text }).then(render);
   if (s.conversation) {

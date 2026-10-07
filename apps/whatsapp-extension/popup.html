@@ -1,15 +1,32 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><title>Pediu</title>
-<style>body{font:14px system-ui;width:300px;padding:14px}input,button{width:100%;box-sizing:border-box;padding:8px;margin:4px 0}h1{font-size:16px;margin:0 0 8px}#msg{color:#b45309;font-size:12px;min-height:1em}</style></head>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>PediuLanchou</title>
+<style>
+:root{--blue:#0a84e0;--grad:linear-gradient(90deg,#0072c6,#00b4f0)}
+body{font:14px system-ui;width:310px;margin:0;color:#1a1a1a}
+header{padding:14px 14px 10px;border-bottom:3px solid transparent;border-image:var(--grad) 1}
+header img{height:34px;display:block}
+main{padding:12px 14px 14px}
+input,button{width:100%;box-sizing:border-box;padding:9px;margin:4px 0;border-radius:8px;font:inherit}
+input{border:1px solid #c9d6e2}
+input:focus{outline:2px solid var(--blue);border-color:transparent}
+button{border:0;color:#fff;background:var(--grad);font-weight:600;cursor:pointer}
+button.ghost{background:#eef3f8;color:#0a4f8a}
+p{margin:0 0 8px;color:#445}
+#msg{color:#b45309;font-size:12px;min-height:1em;margin-top:6px}
+footer{padding:8px 14px;font-size:11px;color:#778;background:#f6f9fc}
+</style></head>
 <body>
-<h1>Pediu — Atendimento WhatsApp</h1>
+<header><img src="assets/logo.png" alt="PediuLanchou Delivery"></header>
+<main>
 <div id="pair" hidden>
   <p>No painel da loja, abra <b>Atendimento WhatsApp</b> e gere um código.</p>
-  <input id="api" placeholder="Endereço do Pediu (https://...)" autocomplete="off">
+  <input id="api" placeholder="Endereço do PediuLanchou (https://...)" autocomplete="off">
   <input id="code" placeholder="Código de 8 caracteres" maxlength="12" autocomplete="off">
   <button id="connect">Conectar</button>
 </div>
-<div id="linked" hidden><p>Conectado à loja <b id="store"></b>.</p><button id="disconnect">Desconectar</button></div>
+<div id="linked" hidden><p>Conectado à loja <b id="store"></b>.</p><button id="disconnect" class="ghost">Desconectar</button></div>
 <div id="msg"></div>
+</main>
+<footer>Desenvolvido com muita fome · pediulanchou.com.br</footer>
 <script src="popup.js"></script>
 </body></html>

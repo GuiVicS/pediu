@@ -1,4 +1,4 @@
-// Cliente da API do Pediu para a extensão. A credencial (pext_...) fica só em chrome.storage.local
+// Cliente da API do PediuLanchou para a extensão. A credencial (pext_...) fica só em chrome.storage.local
 // (nível TRUSTED_CONTEXTS: nem os content scripts leem) e nunca passa pelo contexto MAIN do WhatsApp Web.
 
 export interface Link { apiBase: string; token: string; storeName: string }
