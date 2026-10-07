@@ -1,0 +1,13 @@
+{
+  "name": "@pediu/whatsapp-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "tsc -p . --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": { "@wppconnect/wa-js": "4.6.1" },
+  "devDependencies": { "@types/chrome": "^0.0.300", "esbuild": "^0.25.0" }
+}

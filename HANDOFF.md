@@ -177,3 +177,19 @@ Foi feita análise estática do manifesto, ponte, chat, respostas rápidas, tran
 Escopo final confirmado pelo usuário: **agente de atendimento delivery ligado à sessão do lojista**, com transcrição de áudio, análise de imagens, contexto comercial real e **checklist no super admin para habilitar funcionalidades por loja**. Disparos são complemento posterior; manter foco no atendimento. A checklist também faz parte do plano e ainda não está implementada.
 
 Para continuar, leia o plano e comece pela etapa 1. Não retome a elaboração de uma arquitetura ampla de CRM/campanhas. Nenhum teste no WhatsApp real foi executado nesta passagem; alteração exclusivamente documental.
+
+## Atualização — etapa 1 da extensão WhatsApp (2026-10-07, sessão de sincronização)
+
+Sincronizado com `origin/main` (df9adec); HANDOFF.md e `docs/PLANO-EXTENSAO-WHATSAPP.md` relidos. Seguindo o plano, iniciada a **etapa 1** em `apps/whatsapp-extension` (workspace `@pediu/whatsapp-extension`).
+
+Feito:
+- Manifest V3 (`manifest.json`): WA-JS 4.6.1 fixado (`@wppconnect/wa-js`) no contexto MAIN, ponte isolada e service worker; só `web.whatsapp.com`, permissão `storage`.
+- `src/protocol.ts`: contrato e validação de envelopes (texto/áudio/imagem/outro, truncamento, só eventos de leitura — **sem comando de envio**, nenhuma credencial Pediu cruza a fronteira MAIN).
+- `src/main-world.ts`: emite `ready`, `disconnected` e `message` (de `chat.new_message`) via postMessage.
+- `src/bridge.ts`: valida origem/canal, repassa por porta runtime e reconecta se o service worker for encerrado.
+- `src/service-worker.ts`: apenas guarda estado e últimas 50 mensagens em `chrome.storage.session` (validação; sem backend ainda).
+- `scripts/build.mjs`: esbuild + cópia do bundle WA-JS para `dist/` (carregar como extensão descompactada).
+
+Validação executada nesta passagem: `tsc` da extensão sem erros, 5 testes unitários do protocolo aprovados, build gera `dist/`. **Não testado no WhatsApp Web real**: o payload de `chat.new_message`, `WPP.isReady`/`webpack.onReady` e o campo de versão em 4.6.1 vieram da Orbita/documentação e precisam ser confirmados com conta de teste. Não foi executado `npm run check` raiz completo nem a suíte da API.
+
+Pendente da etapa 1 (critério: conta de teste recebe texto/áudio/imagem e reconecta): teste manual no Chrome, confirmar eventos, download de mídia por partes (`chat.downloadMedia`) e teste de reconexão. Depois, etapa 2 (pareamento com sessão + checklist no super admin). A Orbita não está acessível neste ambiente; o código acima não copia nada dela.
