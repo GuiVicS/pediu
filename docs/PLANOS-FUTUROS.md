@@ -4,6 +4,8 @@ Itens decididos como **não implementados por enquanto**. Nada aqui existe como 
 
 ## 1. Emissão de nota fiscal (NFC-e / NF-e) — standby
 
+> **PRD completo (pesquisa de mercado, provedores, regras, requisitos, arquitetura e plano): [`docs/PRD-NOTA-FISCAL.md`](PRD-NOTA-FISCAL.md).**
+
 **Situação:** não há nada de emissão fiscal no app. O cupom impresso e o comprovante do PDV são operacionais, sem valor fiscal. A decisão do dono (2026-10-07) é adicionar a emissão **depois**, e ela deve ser **opcional, com chave liga/desliga**.
 
 ### Desenho proposto (para quando retomar)
