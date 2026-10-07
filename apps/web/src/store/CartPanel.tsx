@@ -7,7 +7,7 @@ import { Img } from './Img';
 
 export function CartPanel({ flat, emptyText }: { flat?: boolean; emptyText?: string }) {
   const cart = useCart();
-  const { theme, store, status } = useStore();
+  const { theme, store, status, unpublished } = useStore();
   const below = cart.subtotal < store.minOrder;
   const wrap = cx('rounded-t border border-t-border bg-t-card p-5', !flat && 'sticky top-24 shadow-sm');
 
@@ -49,8 +49,9 @@ export function CartPanel({ flat, emptyText }: { flat?: boolean; emptyText?: str
       </div>
       {below && <p className="mt-2 text-xs text-t-danger">Pedido mínimo: {brl(store.minOrder)}</p>}
       {!status.open && <p className="mt-2 text-xs text-t-danger">Loja fechada — não é possível finalizar agora.</p>}
+      {unpublished && <p className="mt-2 text-xs text-t-danger">Loja em desenvolvimento: os pedidos só são liberados depois da publicação.</p>}
       <button
-        disabled={below || !status.open}
+        disabled={below || !status.open || unpublished}
         onClick={() => window.dispatchEvent(new Event('open-checkout'))}
         className="mt-3 w-full rounded-t bg-t-primary py-3 font-semibold text-t-primary-fg transition hover:opacity-90 disabled:opacity-40"
       >

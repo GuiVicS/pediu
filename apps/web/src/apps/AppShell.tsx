@@ -6,6 +6,7 @@ import { ROLE_LABEL } from '@/lib/roles';
 import { useSession } from '@/lib/session';
 import { cx } from '@/ui/kit';
 import { ThemeToggle, useApplyPlatformTheme } from '@/ui/platformTheme';
+import { InstallButton } from '@/ui/InstallButton';
 import { setThemeColor } from '@/lib/pwa';
 import { ToastProvider } from '@/admin/AdminUI';
 
@@ -17,12 +18,12 @@ export const APPS: { to: string; label: string; Icon: LucideIcon; perm: Perm }[]
 export default function AppShell({ title, wide, right, children }: { title: string; wide?: boolean; right?: ReactNode; children: ReactNode }) {
   const { me, can, logout } = useSession();
   useApplyPlatformTheme();
-  useEffect(() => { setThemeColor('#0091FF'); document.title = `${title} — Pediu Lanchou`; }, [title]);
+  useEffect(() => { setThemeColor('#0091FF'); document.title = `${title} — PediuLanchou`; }, [title]);
   return (
     <ToastProvider>
       <div className="flex min-h-screen flex-col bg-background font-brand text-foreground">
         <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-card px-4 py-2.5">
-          <img src="/brand/bubble.png" alt="Pediu Lanchou" className="h-8 w-8" />
+          <img src="/brand/bubble.png" alt="PediuLanchou" className="h-8 w-8" />
           <div className="min-w-0 flex-1 leading-tight"><div className="truncate text-sm font-bold">{title}</div><div className="truncate text-xs text-muted-foreground">{me?.name} · {me ? ROLE_LABEL[me.role] : ''}</div></div>
           {right}
           <nav className="flex gap-1">
@@ -31,6 +32,7 @@ export default function AppShell({ title, wide, right, children }: { title: stri
             ))}
             {can('admin.dashboard') && <a href="/painel" title="Painel" className="flex items-center gap-1.5 rounded-ui-sm px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted"><LayoutDashboard size={14} /><span className="hidden sm:inline">Painel</span></a>}
           </nav>
+          <InstallButton label="Instalar" className="flex items-center gap-1.5 rounded-ui-sm bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90" />
           <ThemeToggle />
           <button onClick={logout} title="Sair" aria-label="Sair" className="rounded-ui-sm p-2 text-muted-foreground hover:bg-muted"><LogOut size={15} /></button>
         </header>

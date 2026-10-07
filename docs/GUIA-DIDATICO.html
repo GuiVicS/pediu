@@ -643,7 +643,7 @@ footer{padding:22px 16px;text-align:center;color:var(--muted-foreground);font-si
 <hr>
 <h2 id="parte-6-usando-a-plataforma-pelas-telas">Parte 6 — Usando a plataforma pelas telas<a class="anchor" href="#parte-6-usando-a-plataforma-pelas-telas" aria-label="Link para esta seção">#</a></h2>
 <h3 id="6-1-super-admin-nossa-equipe">6.1 Super admin (nossa equipe)<a class="anchor" href="#6-1-super-admin-nossa-equipe" aria-label="Link para esta seção">#</a></h3>
-<p>Acesso: endereço da API (ex.: <code>https://api.SEUDOMINIO</code>). O primeiro super admin é criado por comando (Parte 7.2, passo 6). No primeiro login é obrigatório cadastrar o <strong>autenticador</strong> (TOTP) e guardar os <strong>códigos de recuperação</strong> num lugar seguro.</p>
+<p>Acesso: endereço da API (ex.: <code>https://api.SEUDOMINIO</code>). O super admin também pode ser <strong>instalado como app</strong> (menu do navegador → Instalar). O primeiro super admin é criado por comando (Parte 7.2, passo 6). No primeiro login é obrigatório cadastrar o <strong>autenticador</strong> (TOTP) e guardar os <strong>códigos de recuperação</strong> num lugar seguro.</p>
 <div class="tw"><table>
 <thead>
 <tr>
@@ -697,7 +697,7 @@ footer{padding:22px 16px;text-align:center;color:var(--muted-foreground);font-si
 <li><strong>Voltar uma versão com problema:</strong> Lojas → loja → <em>Versão</em> → escolher a versão anterior.</li>
 </ol>
 <h3 id="6-2-painel-do-lojista-painel">6.2 Painel do lojista (<code>/painel</code>)<a class="anchor" href="#6-2-painel-do-lojista-painel" aria-label="Link para esta seção">#</a></h3>
-<p>Entrar em <code>https://SUALOJA/entrar</code> com e-mail e senha da equipe.</p>
+<p>Entrar em <code>https://SUALOJA/entrar</code> com e-mail e senha da equipe. O botão <strong>Ver loja</strong> (menu lateral) abre a vitrine; enquanto a loja estiver em <code>desenvolvimento</code>, <strong>só a equipe logada vê a vitrine</strong>, com uma faixa amarela &quot;Modo desenvolvimento&quot; e pedidos desativados (o botão mostra a marca <em>rascunho</em>). O botão <strong>Instalar painel como app</strong> instala o painel no computador ou celular.</p>
 <div class="tw"><table>
 <thead>
 <tr>
@@ -1182,12 +1182,12 @@ npm test           # roda todos os testes
 <td>Definir validade, limites, vínculo à conta</td>
 </tr>
 <tr>
-<td><strong>Visualizar loja em desenvolvimento</strong></td>
-<td>Link de prévia seguro + faixa &quot;MODO DESENVOLVIMENTO&quot; e botão &quot;Ver loja&quot;</td>
+<td><del>Visualizar loja em desenvolvimento</del></td>
+<td><strong>Feito</strong> (falta validar no navegador): a equipe logada da própria loja vê a vitrine em rascunho com a faixa &quot;MODO DESENVOLVIMENTO&quot; e o botão &quot;Ver loja&quot; marca &quot;rascunho&quot;; pedidos seguem bloqueados. Falta, se quiserem, link de prévia para o <em>cliente do lojista</em> ver sem login</td>
 </tr>
 <tr>
-<td><strong>PWA</strong> da vitrine e do painel</td>
-<td>Existe infraestrutura; falta validar instalação, escopo e atualização</td>
+<td><strong>PWA</strong> (vitrine, painel, PDV, garçom, entregador e super admin)</td>
+<td><strong>Feito no código</strong> (cada tela instala como app próprio; super admin também); falta validar instalação e atualização em Android/iPhone reais</td>
 </tr>
 <tr>
 <td>Validação real da extensão do WhatsApp</td>
@@ -1220,7 +1220,7 @@ npm test           # roda todos os testes
 </tr>
 <tr>
 <td>Celulares (PWA)</td>
-<td>Atalhos próprios para <code>/garcom</code>, <code>/entregador</code> e <code>/pdv</code> (hoje o app instalado abre na vitrine), sessão mais longa para a equipe em dispositivo dedicado, aviso quando a sessão está prestes a expirar</td>
+<td>Sessão mais longa para a equipe em dispositivo dedicado, aviso quando a sessão está prestes a expirar, funcionamento básico offline (hoje não há cache de propósito)</td>
 </tr>
 <tr>
 <td>Impressão</td>
@@ -1360,133 +1360,134 @@ npm test           # roda todos os testes
 <li><input type="checkbox" data-c="21"> <strong>Destaques</strong>: escolher os campeões de venda.</li>
 <li><input type="checkbox" data-c="22"> <strong>Pagamentos</strong>: ativar Pix, dinheiro, cartão na entrega. Para pagamento <strong>online</strong>, conectar o gateway (12.7).</li>
 <li><input type="checkbox" data-c="23"> <strong>Usuários (equipe)</strong>: criar uma conta por pessoa <strong>com o perfil certo</strong> (Parte 3): gerente, suporte, balcão, garçom, entregador. <strong>Nunca</strong> compartilhar a conta do administrador.</li>
-<li><input type="checkbox" data-c="24"> <strong>Domínio próprio</strong> (se houver): painel → Domínios → adicionar → pedir ao responsável do DNS para criar o <strong>CNAME</strong> e o <strong>TXT</strong> mostrados → <em>Verificar</em> (Parte 6.2).</li>
+<li><input type="checkbox" data-c="24"> <strong>Conferir a vitrine em rascunho:</strong> painel → <strong>Ver loja</strong> (a loja ainda está em <code>desenvolvimento</code>, então só você, logado, vê). Percorra as categorias, abra produtos com adicionais e confira preços e fotos no celular.</li>
+<li><input type="checkbox" data-c="25"> <strong>Domínio próprio</strong> (se houver): painel → Domínios → adicionar → pedir ao responsável do DNS para criar o <strong>CNAME</strong> e o <strong>TXT</strong> mostrados → <em>Verificar</em> (Parte 6.2).</li>
 </ul>
 <h3 id="12-3-impressoras-de-cupom-cozinha-bar-caixa">12.3 Impressoras de cupom (cozinha, bar, caixa)<a class="anchor" href="#12-3-impressoras-de-cupom-cozinha-bar-caixa" aria-label="Link para esta seção">#</a></h3>
 <p><strong>Antes da visita — o que levar/confirmar</strong></p>
 <ul>
-<li><input type="checkbox" data-c="25"> Impressora <strong>térmica ESC/POS</strong> (ex.: Elgin i9, Epson TM-T20, Bematech MP-4200). Impressora comum de papel A4 <strong>não serve</strong>.</li>
-<li><input type="checkbox" data-c="26"> <strong>Papel</strong> (bobina 58 mm ou 80 mm) reserva e, se a impressora tiver, cabo de <strong>rede (RJ-45)</strong>; senão USB.</li>
-<li><input type="checkbox" data-c="27"> Um <strong>computador sempre ligado</strong> no local (o &quot;caixa&quot;) com internet, onde ficará o agente de impressão. Windows, Linux ou Mac.</li>
-<li><input type="checkbox" data-c="28"> Saber como a impressora se conecta: <strong>Rede</strong> (IP:9100), <strong>Windows compartilhada</strong> (USB no PC) ou <strong>CUPS</strong> (Linux/Mac).</li>
+<li><input type="checkbox" data-c="26"> Impressora <strong>térmica ESC/POS</strong> (ex.: Elgin i9, Epson TM-T20, Bematech MP-4200). Impressora comum de papel A4 <strong>não serve</strong>.</li>
+<li><input type="checkbox" data-c="27"> <strong>Papel</strong> (bobina 58 mm ou 80 mm) reserva e, se a impressora tiver, cabo de <strong>rede (RJ-45)</strong>; senão USB.</li>
+<li><input type="checkbox" data-c="28"> Um <strong>computador sempre ligado</strong> no local (o &quot;caixa&quot;) com internet, onde ficará o agente de impressão. Windows, Linux ou Mac.</li>
+<li><input type="checkbox" data-c="29"> Saber como a impressora se conecta: <strong>Rede</strong> (IP:9100), <strong>Windows compartilhada</strong> (USB no PC) ou <strong>CUPS</strong> (Linux/Mac).</li>
 </ul>
 <p><strong>Preparar a impressora fisicamente</strong></p>
 <ul>
-<li><input type="checkbox" data-c="29"> Colocar o papel, ligar, e imprimir o <strong>autoteste</strong> da própria impressora (geralmente segurando o botão Feed ao ligar). Ele costuma mostrar o <strong>IP</strong> (impressora de rede) e a largura do papel.</li>
-<li><input type="checkbox" data-c="30"> Se for de rede: fixar um <strong>IP fixo</strong> para ela (no roteador, &quot;reserva de DHCP&quot;, ou na própria impressora) — senão o endereço muda e para de imprimir.</li>
-<li><input type="checkbox" data-c="31"> Se for USB no Windows: instalar o driver do fabricante e <strong>compartilhar</strong> a impressora (Propriedades → Compartilhamento). Anote o <strong>nome do compartilhamento</strong> (sem espaços é melhor).</li>
+<li><input type="checkbox" data-c="30"> Colocar o papel, ligar, e imprimir o <strong>autoteste</strong> da própria impressora (geralmente segurando o botão Feed ao ligar). Ele costuma mostrar o <strong>IP</strong> (impressora de rede) e a largura do papel.</li>
+<li><input type="checkbox" data-c="31"> Se for de rede: fixar um <strong>IP fixo</strong> para ela (no roteador, &quot;reserva de DHCP&quot;, ou na própria impressora) — senão o endereço muda e para de imprimir.</li>
+<li><input type="checkbox" data-c="32"> Se for USB no Windows: instalar o driver do fabricante e <strong>compartilhar</strong> a impressora (Propriedades → Compartilhamento). Anote o <strong>nome do compartilhamento</strong> (sem espaços é melhor).</li>
 </ul>
 <p><strong>Instalar o agente de impressão no computador do caixa</strong> ⚠️</p>
 <blockquote>
 <p>O agente é um programa em Node.js. Hoje não há instalador pronto: ele é gerado a partir do código. Peça a alguém da equipe técnica para gerar o arquivo <code>agent.mjs</code> (<code>npm run agent:build</code> → <code>apps/print-agent/dist/agent.mjs</code>) e levar no pen drive.</p>
 </blockquote>
 <ul>
-<li><input type="checkbox" data-c="32"> Instalar o <strong>Node.js 20 ou superior</strong> no computador do caixa.</li>
-<li><input type="checkbox" data-c="33"> Copiar <code>agent.mjs</code> para uma pasta fixa (ex.: <code>C:\PediuAgente</code>).</li>
-<li><input type="checkbox" data-c="34"> No painel: <strong>Impressão → Parear agente</strong> → copiar o código de 6 dígitos (vale 10 min).</li>
-<li><input type="checkbox" data-c="35"> No computador do caixa, na pasta do agente: <code>node agent.mjs pair --url https://SLUG.pediulanchou.com.br --code 123456 --name &quot;Caixa&quot;</code>.</li>
-<li><input type="checkbox" data-c="36"> Iniciar: <code>node agent.mjs run</code>. No painel o agente deve aparecer <strong>online</strong>. Deixe a janela aberta.</li>
-<li><input type="checkbox" data-c="37"> <strong>Iniciar junto com o Windows</strong> ⚠️: não há instruções oficiais no repositório; uma opção é criar uma tarefa no <em>Agendador de Tarefas</em> (&quot;Ao fazer logon&quot;, executar <code>node C:\PediuAgente\agent.mjs run</code>) e <strong>testar reiniciando o computador</strong>. Documente o método que funcionar e atualize este guia.</li>
+<li><input type="checkbox" data-c="33"> Instalar o <strong>Node.js 20 ou superior</strong> no computador do caixa.</li>
+<li><input type="checkbox" data-c="34"> Copiar <code>agent.mjs</code> para uma pasta fixa (ex.: <code>C:\PediuAgente</code>).</li>
+<li><input type="checkbox" data-c="35"> No painel: <strong>Impressão → Parear agente</strong> → copiar o código de 6 dígitos (vale 10 min).</li>
+<li><input type="checkbox" data-c="36"> No computador do caixa, na pasta do agente: <code>node agent.mjs pair --url https://SLUG.pediulanchou.com.br --code 123456 --name &quot;Caixa&quot;</code>.</li>
+<li><input type="checkbox" data-c="37"> Iniciar: <code>node agent.mjs run</code>. No painel o agente deve aparecer <strong>online</strong>. Deixe a janela aberta.</li>
+<li><input type="checkbox" data-c="38"> <strong>Iniciar junto com o Windows</strong> ⚠️: não há instruções oficiais no repositório; uma opção é criar uma tarefa no <em>Agendador de Tarefas</em> (&quot;Ao fazer logon&quot;, executar <code>node C:\PediuAgente\agent.mjs run</code>) e <strong>testar reiniciando o computador</strong>. Documente o método que funcionar e atualize este guia.</li>
 </ul>
 <p><strong>Configurar no painel (Impressão)</strong></p>
 <ul>
-<li><input type="checkbox" data-c="38"> <strong>Zonas</strong>: criar (Cozinha, Bar, Caixa/Expedição). A zona do caixa pode marcar <em>Mostrar preços e total</em> (a da cozinha <strong>não</strong> mostra preços).</li>
-<li><input type="checkbox" data-c="39"> <strong>Impressoras</strong>: <em>Nova impressora</em> → nome, <strong>Conexão</strong> (Rede/Windows/CUPS), <strong>Agente</strong> (o computador pareado), endereço (<code>192.168.0.50:9100</code>, nome do compartilhamento ou fila CUPS), <strong>Papel</strong> (58/80 mm), colunas (32/48), <strong>Acentos</strong> (CP860 padrão), cortar papel, abrir gaveta.</li>
-<li><input type="checkbox" data-c="40"> <strong>Ligar zona ↔ impressora</strong>; marcar uma <strong>principal</strong> e, se houver, uma <strong>reserva</strong> (entra sozinha se a principal falhar 3 vezes ou o agente cair).</li>
-<li><input type="checkbox" data-c="41"> <strong>Imprimir teste</strong> em cada impressora. Conferir: cortou? acentos certos (ç, ã, é)? colunas sem quebrar? Se os acentos saírem trocados, mude para CP850 ou CP437 e teste de novo.</li>
-<li><input type="checkbox" data-c="42"> Conferir que <strong>toda categoria tem zona</strong> e que <strong>toda zona tem impressora</strong> (o painel avisa em amarelo &quot;Sem impressora&quot;).</li>
-<li><input type="checkbox" data-c="43"> Fazer um <strong>pedido de teste</strong> pela vitrine e ver sair o cupom certo em cada zona; testar <strong>Reimprimir</strong>.</li>
-<li><input type="checkbox" data-c="44"> <strong>Plano B</strong>: mostrar ao cliente onde clicar em <em>Reimprimir</em> e como ver o pedido na tela se a impressora falhar.</li>
+<li><input type="checkbox" data-c="39"> <strong>Zonas</strong>: criar (Cozinha, Bar, Caixa/Expedição). A zona do caixa pode marcar <em>Mostrar preços e total</em> (a da cozinha <strong>não</strong> mostra preços).</li>
+<li><input type="checkbox" data-c="40"> <strong>Impressoras</strong>: <em>Nova impressora</em> → nome, <strong>Conexão</strong> (Rede/Windows/CUPS), <strong>Agente</strong> (o computador pareado), endereço (<code>192.168.0.50:9100</code>, nome do compartilhamento ou fila CUPS), <strong>Papel</strong> (58/80 mm), colunas (32/48), <strong>Acentos</strong> (CP860 padrão), cortar papel, abrir gaveta.</li>
+<li><input type="checkbox" data-c="41"> <strong>Ligar zona ↔ impressora</strong>; marcar uma <strong>principal</strong> e, se houver, uma <strong>reserva</strong> (entra sozinha se a principal falhar 3 vezes ou o agente cair).</li>
+<li><input type="checkbox" data-c="42"> <strong>Imprimir teste</strong> em cada impressora. Conferir: cortou? acentos certos (ç, ã, é)? colunas sem quebrar? Se os acentos saírem trocados, mude para CP850 ou CP437 e teste de novo.</li>
+<li><input type="checkbox" data-c="43"> Conferir que <strong>toda categoria tem zona</strong> e que <strong>toda zona tem impressora</strong> (o painel avisa em amarelo &quot;Sem impressora&quot;).</li>
+<li><input type="checkbox" data-c="44"> Fazer um <strong>pedido de teste</strong> pela vitrine e ver sair o cupom certo em cada zona; testar <strong>Reimprimir</strong>.</li>
+<li><input type="checkbox" data-c="45"> <strong>Plano B</strong>: mostrar ao cliente onde clicar em <em>Reimprimir</em> e como ver o pedido na tela se a impressora falhar.</li>
 </ul>
 <h3 id="12-4-celulares-dos-garcons-e-entregadores-pwa">12.4 Celulares dos garçons e entregadores (PWA)<a class="anchor" href="#12-4-celulares-dos-garcons-e-entregadores-pwa" aria-label="Link para esta seção">#</a></h3>
 <p>PWA = o site instalado como aplicativo na tela inicial do celular. Cada pessoa usa <strong>o próprio login</strong> (perfil <code>garcom</code> ou <code>entregador</code>).</p>
 <p><strong>Requisitos</strong></p>
 <ul>
-<li><input type="checkbox" data-c="45"> <strong>Android:</strong> Chrome atualizado. <strong>iPhone:</strong> Safari (no iOS, instalar só funciona pelo Safari).</li>
-<li><input type="checkbox" data-c="46"> Wi-Fi do salão com <strong>sinal em todo o salão</strong>, inclusive varanda e fundos. Teste caminhando com o celular.</li>
-<li><input type="checkbox" data-c="47"> Bateria: carregador/powerbank no turno. Desligar a <strong>economia de bateria agressiva</strong> para o navegador (ela pode &quot;matar&quot; o app em segundo plano).</li>
-<li><input type="checkbox" data-c="48"> Volume do celular ligado (avisos sonoros) e <strong>não incomodar</strong> desativado durante o turno.</li>
+<li><input type="checkbox" data-c="46"> <strong>Android:</strong> Chrome atualizado. <strong>iPhone:</strong> Safari (no iOS, instalar só funciona pelo Safari).</li>
+<li><input type="checkbox" data-c="47"> Wi-Fi do salão com <strong>sinal em todo o salão</strong>, inclusive varanda e fundos. Teste caminhando com o celular.</li>
+<li><input type="checkbox" data-c="48"> Bateria: carregador/powerbank no turno. Desligar a <strong>economia de bateria agressiva</strong> para o navegador (ela pode &quot;matar&quot; o app em segundo plano).</li>
+<li><input type="checkbox" data-c="49"> Volume do celular ligado (avisos sonoros) e <strong>não incomodar</strong> desativado durante o turno.</li>
 </ul>
 <p><strong>Instalação (por celular)</strong></p>
 <ul>
-<li><input type="checkbox" data-c="49"> Abrir <code>https://SLUG.pediulanchou.com.br/entrar</code> e <strong>entrar com o e-mail e a senha da pessoa</strong>.</li>
-<li><input type="checkbox" data-c="50"> Garçom: confirmar que abre a tela de mesas (<code>/garcom</code>). Entregador: tela de entregas (<code>/entregador</code>).</li>
-<li><input type="checkbox" data-c="51"> <strong>Android:</strong> menu do Chrome (⋮) → <strong>Instalar app</strong> (ou <em>Adicionar à tela inicial</em>) → confirmar.</li>
-<li><input type="checkbox" data-c="52"> <strong>iPhone:</strong> botão <strong>Compartilhar</strong> → <strong>Adicionar à Tela de Início</strong> → <em>Adicionar</em>.</li>
-<li><input type="checkbox" data-c="53"> Abrir o ícone novo na tela inicial e conferir que o app abre em tela cheia.</li>
-<li><input type="checkbox" data-c="54"> Renomear o ícone se quiser (&quot;Garçom Burger Lab&quot;).</li>
+<li><input type="checkbox" data-c="50"> Abrir <code>https://SLUG.pediulanchou.com.br/entrar</code> e <strong>entrar com o e-mail e a senha da pessoa</strong>.</li>
+<li><input type="checkbox" data-c="51"> Garçom: confirmar que abre a tela de mesas (<code>/garcom</code>). Entregador: tela de entregas (<code>/entregador</code>). No iPhone o botão <strong>Instalar</strong> mostra o passo a passo do Safari.</li>
+<li><input type="checkbox" data-c="52"> <strong>Android:</strong> botão <strong>Instalar</strong> no topo da própria tela (ou menu do Chrome ⋮ → <strong>Instalar app</strong>) → confirmar. Faça <strong>a partir da tela certa</strong> (<code>/garcom</code> para o garçom, <code>/entregador</code>, <code>/pdv</code>): cada tela se instala como um app separado que abre direto nela. ⚠️ Comportamento novo, ainda não validado em celulares reais.</li>
+<li><input type="checkbox" data-c="53"> <strong>iPhone:</strong> botão <strong>Compartilhar</strong> → <strong>Adicionar à Tela de Início</strong> → <em>Adicionar</em>.</li>
+<li><input type="checkbox" data-c="54"> Abrir o ícone novo na tela inicial e conferir que o app abre <strong>em tela cheia e direto na tela dele</strong> (mesas para o garçom). Se abrir na vitrine, desinstale e instale de novo a partir da tela certa.</li>
+<li><input type="checkbox" data-c="55"> Renomear o ícone se quiser (&quot;Garçom Burger Lab&quot;).</li>
 </ul>
 <p>⚠️ <strong>Limitações conhecidas — explique ao cliente</strong></p>
 <ul>
-<li>O app instalado abre <strong>na vitrine da loja</strong> (o atalho aponta para a página inicial). O garçom precisa entrar pelo login e ir para a tela de mesas; <strong>se a sessão estiver ativa</strong>, entra direto. Melhoria planejada: atalho próprio para <code>/garcom</code> e <code>/entregador</code> (Parte 10).</li>
+<li>O app instalado precisa de login: se a sessão tiver vencido, ele abre a tela de entrada. Cada tela (garçom, entregador, PDV, painel) é instalada separadamente.</li>
 <li>A <strong>sessão da equipe dura 12 horas e expira após 2 horas sem uso</strong>. No começo do turno, abra o app e confirme que está logado; se pedir login, entre de novo. Não é defeito.</li>
 <li>Sem internet o app <strong>não</strong> lança pedidos: depende do Wi-Fi.</li>
 <li>Cada pessoa com a <strong>própria conta</strong>: não compartilhe login (o histórico mostra quem fez cada ação).</li>
 </ul>
 <p><strong>Teste com o garçom</strong></p>
 <ul>
-<li><input type="checkbox" data-c="55"> Lançar um pedido numa mesa de teste, ver chegar na cozinha (tela e impressão), adicionar um item depois e conferir que <strong>só o item novo</strong> imprime.</li>
-<li><input type="checkbox" data-c="56"> Entregador: pegar um pedido de entrega de teste (<em>pronto → saiu → entregue</em>).</li>
-<li><input type="checkbox" data-c="57"> Mostrar como <strong>trocar de usuário</strong> (sair) ao passar o celular para outra pessoa.</li>
+<li><input type="checkbox" data-c="56"> Lançar um pedido numa mesa de teste, ver chegar na cozinha (tela e impressão), adicionar um item depois e conferir que <strong>só o item novo</strong> imprime.</li>
+<li><input type="checkbox" data-c="57"> Entregador: pegar um pedido de entrega de teste (<em>pronto → saiu → entregue</em>).</li>
+<li><input type="checkbox" data-c="58"> Mostrar como <strong>trocar de usuário</strong> (sair) ao passar o celular para outra pessoa.</li>
 </ul>
 <h3 id="12-5-caixa-pdv-e-telas-da-cozinha">12.5 Caixa / PDV e telas da cozinha<a class="anchor" href="#12-5-caixa-pdv-e-telas-da-cozinha" aria-label="Link para esta seção">#</a></h3>
 <ul>
-<li><input type="checkbox" data-c="58"> No computador ou tablet do caixa, abrir <code>/pdv</code> com um usuário <code>balcao</code> (ou superior). Instalar como app (Chrome → Instalar) se quiser.</li>
-<li><input type="checkbox" data-c="59"> Gerente/suporte abrem <code>/painel/pedidos</code> numa tela fixa da cozinha para acompanhar os pedidos (o painel emite <strong>aviso sonoro</strong> de pedido novo; confirme no teste que o som toca — o navegador pode exigir <strong>um clique na página</strong> antes de liberar o áudio, então faça esse clique no começo do turno).</li>
-<li><input type="checkbox" data-c="60"> Testar: lançar pedido no PDV, receber em dinheiro/Pix, imprimir.</li>
-<li><input type="checkbox" data-c="61"> Opcional: instalar o <strong>painel como app</strong> (botão <em>Instalar painel como app</em> no menu lateral).</li>
+<li><input type="checkbox" data-c="59"> No computador ou tablet do caixa, abrir <code>/pdv</code> com um usuário <code>balcao</code> (ou superior). Instalar como app (Chrome → Instalar) se quiser.</li>
+<li><input type="checkbox" data-c="60"> Gerente/suporte abrem <code>/painel/pedidos</code> numa tela fixa da cozinha para acompanhar os pedidos (o painel emite <strong>aviso sonoro</strong> de pedido novo; confirme no teste que o som toca — o navegador pode exigir <strong>um clique na página</strong> antes de liberar o áudio, então faça esse clique no começo do turno).</li>
+<li><input type="checkbox" data-c="61"> Testar: lançar pedido no PDV, receber em dinheiro/Pix, imprimir.</li>
+<li><input type="checkbox" data-c="62"> Opcional: instalar o <strong>painel como app</strong> (botão <em>Instalar painel como app</em> no menu lateral).</li>
 </ul>
 <h3 id="12-6-dominio-https-e-qr-code">12.6 Domínio, HTTPS e QR code<a class="anchor" href="#12-6-dominio-https-e-qr-code" aria-label="Link para esta seção">#</a></h3>
 <ul>
-<li><input type="checkbox" data-c="62"> Abrir <code>https://SLUG.pediulanchou.com.br</code> num celular com 4G (fora do Wi-Fi da loja): carrega, mostra o cadeado, o logo e o cardápio?</li>
-<li><input type="checkbox" data-c="63"> Domínio próprio: <em>Verificar</em> deu certo? A página abre no domínio do cliente com cadeado? (O certificado é emitido no <strong>primeiro acesso</strong>; pode levar alguns segundos.)</li>
-<li><input type="checkbox" data-c="64"> Gerar <strong>QR code</strong> do endereço da loja (qualquer gerador) e entregar ao cliente para balcão, mesas e redes sociais.</li>
-<li><input type="checkbox" data-c="65"> Instalar a vitrine como app no celular do dono para ele ver como o cliente vê.</li>
+<li><input type="checkbox" data-c="63"> Abrir <code>https://SLUG.pediulanchou.com.br</code> num celular com 4G (fora do Wi-Fi da loja): carrega, mostra o cadeado, o logo e o cardápio?</li>
+<li><input type="checkbox" data-c="64"> Domínio próprio: <em>Verificar</em> deu certo? A página abre no domínio do cliente com cadeado? (O certificado é emitido no <strong>primeiro acesso</strong>; pode levar alguns segundos.)</li>
+<li><input type="checkbox" data-c="65"> Gerar <strong>QR code</strong> do endereço da loja (qualquer gerador) e entregar ao cliente para balcão, mesas e redes sociais.</li>
+<li><input type="checkbox" data-c="66"> Instalar a vitrine como app no celular do dono para ele ver como o cliente vê.</li>
 </ul>
 <h3 id="12-7-pagamentos-online-se-contratado">12.7 Pagamentos online (se contratado)<a class="anchor" href="#12-7-pagamentos-online-se-contratado" aria-label="Link para esta seção">#</a></h3>
 <ul>
-<li><input type="checkbox" data-c="66"> Conectar o gateway em <strong>Pagamentos</strong> (Mercado Pago ou Sicoob) com as credenciais <strong>do cliente</strong> (nunca as nossas).</li>
-<li><input type="checkbox" data-c="67"> Fazer uma <strong>cobrança real de valor baixo</strong> (ex.: R$ 1,00), pagar, e ver o pedido sair de <em>aguardando</em> para <em>novo</em> sozinho. Depois estornar/conciliar.</li>
-<li><input type="checkbox" data-c="68"> Conferir que o servidor tem <code>PUBLIC_API_URL</code> configurado (os avisos automáticos do gateway dependem disso — Parte 7.4).</li>
-<li><input type="checkbox" data-c="69"> Explicar ao cliente: pedido com pagamento online só aparece para a cozinha <strong>depois</strong> do pagamento confirmado.</li>
+<li><input type="checkbox" data-c="67"> Conectar o gateway em <strong>Pagamentos</strong> (Mercado Pago ou Sicoob) com as credenciais <strong>do cliente</strong> (nunca as nossas).</li>
+<li><input type="checkbox" data-c="68"> Fazer uma <strong>cobrança real de valor baixo</strong> (ex.: R$ 1,00), pagar, e ver o pedido sair de <em>aguardando</em> para <em>novo</em> sozinho. Depois estornar/conciliar.</li>
+<li><input type="checkbox" data-c="69"> Conferir que o servidor tem <code>PUBLIC_API_URL</code> configurado (os avisos automáticos do gateway dependem disso — Parte 7.4).</li>
+<li><input type="checkbox" data-c="70"> Explicar ao cliente: pedido com pagamento online só aparece para a cozinha <strong>depois</strong> do pagamento confirmado.</li>
 </ul>
 <h3 id="12-8-e-mail-e-conta-do-cliente">12.8 E-mail e conta do cliente<a class="anchor" href="#12-8-e-mail-e-conta-do-cliente" aria-label="Link para esta seção">#</a></h3>
 <ul>
-<li><input type="checkbox" data-c="70"> Pedir um código de login em <code>/conta</code> da vitrine com um e-mail de teste e <strong>confirmar que o e-mail chega</strong> (confira a caixa de spam). Se der erro 503, falta configurar o SMTP no servidor (Parte 7.4).</li>
+<li><input type="checkbox" data-c="71"> Pedir um código de login em <code>/conta</code> da vitrine com um e-mail de teste e <strong>confirmar que o e-mail chega</strong> (confira a caixa de spam). Se der erro 503, falta configurar o SMTP no servidor (Parte 7.4).</li>
 </ul>
 <h3 id="12-9-ifood-e-whatsapp-opcionais">12.9 iFood e WhatsApp (opcionais)<a class="anchor" href="#12-9-ifood-e-whatsapp-opcionais" aria-label="Link para esta seção">#</a></h3>
 <ul>
-<li><input type="checkbox" data-c="71"> <strong>iFood:</strong> painel → iFood → informar credenciais; fazer um pedido de teste vindo do iFood e conferir a impressão.</li>
-<li><input type="checkbox" data-c="72"> <strong>WhatsApp (⚠️ validar com número de teste antes do cliente):</strong> liberar no super admin (12.1), instalar a extensão no Chrome do computador do atendimento, <strong>conectar</strong> com o código, cadastrar as <strong>respostas rápidas</strong> (horário, cardápio, entrega, pagamento) e começar com o agente em <strong>modo Assistido</strong>. Só ative o <strong>Automático</strong> depois de dias de uso assistido. Explique o risco de limitação do número no WhatsApp (Parte 6.5).</li>
+<li><input type="checkbox" data-c="72"> <strong>iFood:</strong> painel → iFood → informar credenciais; fazer um pedido de teste vindo do iFood e conferir a impressão.</li>
+<li><input type="checkbox" data-c="73"> <strong>WhatsApp (⚠️ validar com número de teste antes do cliente):</strong> liberar no super admin (12.1), instalar a extensão no Chrome do computador do atendimento, <strong>conectar</strong> com o código, cadastrar as <strong>respostas rápidas</strong> (horário, cardápio, entrega, pagamento) e começar com o agente em <strong>modo Assistido</strong>. Só ative o <strong>Automático</strong> depois de dias de uso assistido. Explique o risco de limitação do número no WhatsApp (Parte 6.5).</li>
 </ul>
 <h3 id="12-10-teste-ponta-a-ponta-ensaio-geral">12.10 Teste ponta a ponta (ensaio geral)<a class="anchor" href="#12-10-teste-ponta-a-ponta-ensaio-geral" aria-label="Link para esta seção">#</a></h3>
 <p>Faça <strong>como se fosse um cliente de verdade</strong>, com a equipe acompanhando:</p>
 <ul>
-<li><input type="checkbox" data-c="73"> Cliente abre a vitrine no celular, monta um pedido de <strong>delivery</strong> com adicionais e finaliza.</li>
-<li><input type="checkbox" data-c="74"> O pedido aparece no painel, <strong>imprime na cozinha</strong> (sem preços) e <strong>no caixa</strong> (com total).</li>
-<li><input type="checkbox" data-c="75"> Mudar para <em>preparo → pronto → saiu → entregue</em> acompanhando no celular do cliente (<strong>Meus pedidos</strong>).</li>
-<li><input type="checkbox" data-c="76"> Repetir com <strong>retirada</strong> e com <strong>mesa</strong> (garçom).</li>
-<li><input type="checkbox" data-c="77"> <strong>Cancelar</strong> um pedido com motivo e ver o aviso/cupom de cancelamento.</li>
-<li><input type="checkbox" data-c="78"> Testar <strong>loja fechada</strong>: fora do horário o cliente deve ver &quot;fechado&quot; e não conseguir finalizar.</li>
-<li><input type="checkbox" data-c="79"> Testar um item <strong>indisponível</strong> (desligar &quot;Disponível&quot; no produto) e voltar.</li>
-<li><input type="checkbox" data-c="80"> <strong>Desligar a impressora principal</strong> e ver a reserva assumir (se houver reserva) — ou ver o aviso no painel.</li>
-<li><input type="checkbox" data-c="81"> <strong>Queda de internet</strong>: tirar o computador do caixa da rede por 1 minuto e reconectar; o agente deve voltar sozinho.</li>
+<li><input type="checkbox" data-c="74"> Cliente abre a vitrine no celular, monta um pedido de <strong>delivery</strong> com adicionais e finaliza.</li>
+<li><input type="checkbox" data-c="75"> O pedido aparece no painel, <strong>imprime na cozinha</strong> (sem preços) e <strong>no caixa</strong> (com total).</li>
+<li><input type="checkbox" data-c="76"> Mudar para <em>preparo → pronto → saiu → entregue</em> acompanhando no celular do cliente (<strong>Meus pedidos</strong>).</li>
+<li><input type="checkbox" data-c="77"> Repetir com <strong>retirada</strong> e com <strong>mesa</strong> (garçom).</li>
+<li><input type="checkbox" data-c="78"> <strong>Cancelar</strong> um pedido com motivo e ver o aviso/cupom de cancelamento.</li>
+<li><input type="checkbox" data-c="79"> Testar <strong>loja fechada</strong>: fora do horário o cliente deve ver &quot;fechado&quot; e não conseguir finalizar.</li>
+<li><input type="checkbox" data-c="80"> Testar um item <strong>indisponível</strong> (desligar &quot;Disponível&quot; no produto) e voltar.</li>
+<li><input type="checkbox" data-c="81"> <strong>Desligar a impressora principal</strong> e ver a reserva assumir (se houver reserva) — ou ver o aviso no painel.</li>
+<li><input type="checkbox" data-c="82"> <strong>Queda de internet</strong>: tirar o computador do caixa da rede por 1 minuto e reconectar; o agente deve voltar sozinho.</li>
 </ul>
 <h3 id="12-11-entrada-no-ar-go-live">12.11 Entrada no ar (go-live)<a class="anchor" href="#12-11-entrada-no-ar-go-live" aria-label="Link para esta seção">#</a></h3>
 <ul>
-<li><input type="checkbox" data-c="82"> Todos os itens acima marcados e o dono <strong>aprovou o cardápio e os preços</strong> por escrito (mensagem basta).</li>
-<li><input type="checkbox" data-c="83"> Super admin → loja → <strong>Publicar</strong> (pede o autenticador; assinatura ativa ou motivo de cortesia).</li>
-<li><input type="checkbox" data-c="84"> Anotar os <strong>números dos pedidos de teste</strong> e avisar o cliente para ignorá-los (não há tela para apagar pedidos; eles ficam no histórico e nos relatórios).</li>
-<li><input type="checkbox" data-c="85"> <strong>Treinamento (≈ 1 h)</strong> com dono, caixa, cozinha, garçons e entregadores: tela de pedidos, mudar status, reimprimir, cancelar, esgotar item, o que fazer se cair a internet, a quem ligar.</li>
-<li><input type="checkbox" data-c="86"> Entregar ao cliente por canal seguro: login do administrador, contatos de suporte, este checklist preenchido e um resumo &quot;se a impressora parar&quot;.</li>
-<li><input type="checkbox" data-c="87"> Combinar o <strong>plantão</strong> do primeiro fim de semana (alguém da equipe disponível).</li>
+<li><input type="checkbox" data-c="83"> Todos os itens acima marcados e o dono <strong>aprovou o cardápio e os preços</strong> por escrito (mensagem basta).</li>
+<li><input type="checkbox" data-c="84"> Super admin → loja → <strong>Publicar</strong> (pede o autenticador; assinatura ativa ou motivo de cortesia).</li>
+<li><input type="checkbox" data-c="85"> Anotar os <strong>números dos pedidos de teste</strong> e avisar o cliente para ignorá-los (não há tela para apagar pedidos; eles ficam no histórico e nos relatórios).</li>
+<li><input type="checkbox" data-c="86"> <strong>Treinamento (≈ 1 h)</strong> com dono, caixa, cozinha, garçons e entregadores: tela de pedidos, mudar status, reimprimir, cancelar, esgotar item, o que fazer se cair a internet, a quem ligar.</li>
+<li><input type="checkbox" data-c="87"> Entregar ao cliente por canal seguro: login do administrador, contatos de suporte, este checklist preenchido e um resumo &quot;se a impressora parar&quot;.</li>
+<li><input type="checkbox" data-c="88"> Combinar o <strong>plantão</strong> do primeiro fim de semana (alguém da equipe disponível).</li>
 </ul>
 <h3 id="12-12-depois-da-instalacao">12.12 Depois da instalação<a class="anchor" href="#12-12-depois-da-instalacao" aria-label="Link para esta seção">#</a></h3>
 <ul>
-<li><input type="checkbox" data-c="88"> <strong>D+1:</strong> ligar para o cliente: imprimiu tudo? Algum garçom sem conseguir entrar? Algum erro nos <em>Logs</em>/<em>Alertas</em> do super admin?</li>
-<li><input type="checkbox" data-c="89"> <strong>D+7:</strong> revisar pedidos cancelados e reclamações; ajustar tempos, taxas e fotos; conferir se há usuários desnecessários.</li>
-<li><input type="checkbox" data-c="90"> <strong>D+30:</strong> revisar uso (pedidos, ticket médio), sugerir melhorias (banners, destaques, cupons quando existirem) e registrar o que o cliente pediu.</li>
-<li><input type="checkbox" data-c="91"> Guardar a <strong>ficha 12.0</strong> e as decisões do cliente no registro de atendimento.</li>
+<li><input type="checkbox" data-c="89"> <strong>D+1:</strong> ligar para o cliente: imprimiu tudo? Algum garçom sem conseguir entrar? Algum erro nos <em>Logs</em>/<em>Alertas</em> do super admin?</li>
+<li><input type="checkbox" data-c="90"> <strong>D+7:</strong> revisar pedidos cancelados e reclamações; ajustar tempos, taxas e fotos; conferir se há usuários desnecessários.</li>
+<li><input type="checkbox" data-c="91"> <strong>D+30:</strong> revisar uso (pedidos, ticket médio), sugerir melhorias (banners, destaques, cupons quando existirem) e registrar o que o cliente pediu.</li>
+<li><input type="checkbox" data-c="92"> Guardar a <strong>ficha 12.0</strong> e as decisões do cliente no registro de atendimento.</li>
 </ul>
 <h3 id="12-13-se-algo-falhar-durante-a-instalacao">12.13 Se algo falhar durante a instalação<a class="anchor" href="#12-13-se-algo-falhar-durante-a-instalacao" aria-label="Link para esta seção">#</a></h3>
 <div class="tw"><table>
@@ -1543,7 +1544,7 @@ npm test           # roda todos os testes
 </tr>
 <tr>
 <td><code>docs/GUIA-DIDATICO.html</code></td>
-<td>O mesmo guia em página única, com índice, fluxogramas e checklists clicáveis (abra no navegador; funciona offline)</td>
+<td>O mesmo guia em página única: responsivo (celular, tablet, computador), tema da plataforma com <strong>modo escuro</strong>, índice, fluxogramas e checklists clicáveis. Abra no navegador; funciona offline. É <strong>gerado</strong> a partir deste <code>.md</code> pelo script do repositório do guia (<code>tools/build-html.mjs</code>)</td>
 </tr>
 <tr>
 <td><code>docs/index.html</code></td>

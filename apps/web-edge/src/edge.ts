@@ -84,17 +84,30 @@ export class Bundles {
 }
 
 /** HTML da loja: injeta título, descrição, cor e os dados que a tela precisa (slug, versão) no lugar de <!--pediu-head-->. */
-export function renderIndex(html: string, s: Resolved): string {
+/** Apps de operação instaláveis separadamente (cada um abre direto na própria tela). */
+export const PWA_APPS: Record<string, { label: string; start: string }> = {
+  painel: { label: 'Painel', start: '/painel' }, pdv: { label: 'PDV', start: '/pdv' }, garcom: { label: 'Garçom', start: '/garcom' }, entregador: { label: 'Entregador', start: '/entregador' },
+};
+export function appForPath(path: string): string | null {
+  const seg = path.split('/')[1] ?? '';
+  return seg in PWA_APPS ? seg : null;
+}
+
+export function renderIndex(html: string, s: Resolved, app: string | null = null): string {
   const title = s.title || s.name;
   const head = [`<title>${esc(title)}</title>`, s.description ? `<meta name="description" content="${esc(s.description)}">` : '', s.themeColor ? `<meta name="theme-color" content="${esc(s.themeColor)}">` : '',
     `<meta property="og:title" content="${esc(title)}">`, s.description ? `<meta property="og:description" content="${esc(s.description)}">` : '', s.iconUrl ? `<meta property="og:image" content="${esc(s.iconUrl)}"><link rel="icon" href="${esc(s.iconUrl)}">` : '',
-    '<link rel="manifest" href="/manifest.webmanifest">', `<script>window.__PEDIU__=${jsonForScript({ slug: s.slug, name: s.name, status: s.status, version: s.version ?? 'builtin' })}</script>`].filter(Boolean).join('\n    ');
+    `<link rel="manifest" href="/manifest.webmanifest${app ? `?app=${app}` : ''}">`, `<script>window.__PEDIU__=${jsonForScript({ slug: s.slug, name: s.name, status: s.status, version: s.version ?? 'builtin' })}</script>`].filter(Boolean).join('\n    ');
   return html.includes('<!--pediu-head-->') ? html.replace('<!--pediu-head-->', head) : html.replace('</head>', `    ${head}\n  </head>`);
 }
 
-export function manifestFor(s: Resolved) {
-  return { name: s.name, short_name: s.name.slice(0, 14), start_url: '/?source=pwa', scope: '/', display: 'standalone', lang: 'pt-BR', background_color: '#ffffff', theme_color: s.themeColor ?? '#0091FF',
-    ...(s.iconUrl ? { icons: [{ src: s.iconUrl, sizes: '512x512', purpose: 'any' }] } : {}) };
+export function manifestFor(s: Resolved, app: string | null = null) {
+  const a = app ? PWA_APPS[app] : undefined;
+  // Chrome só oferece "instalar" com ícone de pelo menos 192 px: sem logo da loja (ou nos apps de operação) usamos a marca da plataforma
+  const brand = [{ src: '/brand/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' }, { src: '/brand/mark-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' }];
+  const icons = !a && s.iconUrl ? [{ src: s.iconUrl, sizes: '512x512', purpose: 'any' }] : brand;
+  // cada app de operação é uma instalação própria (id distinto) que abre direto na sua tela
+  return { id: a ? a.start : '/', name: a ? `${s.name} · ${a.label}` : s.name, short_name: a ? a.label : s.name.slice(0, 14), start_url: a ? `${a.start}?source=pwa` : '/?source=pwa', scope: '/', display: 'standalone', lang: 'pt-BR', background_color: '#ffffff', theme_color: s.themeColor ?? '#0091FF', icons };
 }
 
 const NOT_FOUND_PAGE = (host: string) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Loja não encontrada</title><body style="font:16px system-ui;display:grid;place-items:center;min-height:100vh;margin:0;background:#f6f8fb;color:#0f172a"><div style="text-align:center;padding:24px"><h1 style="margin:0 0 8px">Loja não encontrada</h1><p style="color:#64748b">O endereço <b>${esc(host)}</b> não está vinculado a nenhuma loja.</p></div>`;
@@ -119,7 +132,10 @@ export function buildEdge(cfg: EdgeConfig, opts: { logger?: boolean } = {}): Fas
 
     const path = req.url.split('?')[0]!;
     reply.header('x-pediu-version', store.version ?? 'builtin').header('x-content-type-options', 'nosniff').header('referrer-policy', 'strict-origin-when-cross-origin');
-    if (path === '/manifest.webmanifest') return reply.type(MIME['.webmanifest']!).header('cache-control', 'public, max-age=300').send(manifestFor(store));
+    if (path === '/manifest.webmanifest') {
+      const q = (req.query as { app?: string }).app;
+      return reply.type(MIME['.webmanifest']!).header('cache-control', 'public, max-age=300').send(manifestFor(store, q && q in PWA_APPS ? q : null));
+    }
 
     const rel = safeRel(path);
     if (rel === null) return reply.code(400).send('Caminho inválido.');
@@ -133,7 +149,7 @@ export function buildEdge(cfg: EdgeConfig, opts: { logger?: boolean } = {}): Fas
     // rota da SPA: devolve o index.html da versão da loja (cai no embutido se a versão publicada sumiu)
     const indexBuf = (await bundles.read(store.version, 'index.html')) ?? (await bundles.builtin('index.html'));
     if (!indexBuf) return reply.code(503).type('text/plain').send('Esta loja ainda não tem uma versão publicada.');
-    return reply.type('text/html; charset=utf-8').header('cache-control', 'no-cache').header('x-frame-options', 'SAMEORIGIN').send(renderIndex(indexBuf.toString('utf8'), store));
+    return reply.type('text/html; charset=utf-8').header('cache-control', 'no-cache').header('x-frame-options', 'SAMEORIGIN').send(renderIndex(indexBuf.toString('utf8'), store, appForPath(path)));
   });
   return app;
 }

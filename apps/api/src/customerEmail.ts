@@ -1,8 +1,8 @@
-/** E-mail do código de acesso do cliente: usa a marca da loja (cor, logo, nome) e traz no rodapé a assinatura da Pediu Lanchou. */
+/** E-mail do código de acesso do cliente: usa a marca da loja (cor, logo, nome) e traz no rodapé a assinatura da PediuLanchou. */
 export interface LoginCodeEmail {
   storeName: string; storeUrl: string; logoUrl?: string; primary?: string; primaryFg?: string;
   code: string; minutes: number;
-  /** URL da landing page (campo configurável no super admin) e da logo preta da Pediu Lanchou (arquivo servido pela própria loja). */
+  /** URL da landing page (campo configurável no super admin) e da logo preta da PediuLanchou (arquivo servido pela própria loja). */
   landingUrl: string; poweredByLogoUrl: string;
 }
 
@@ -30,11 +30,11 @@ export function loginCodeEmail(a: LoginCodeEmail): { subject: string; html: stri
       ${site ? `<p style="margin:20px 0 0"><a href="${esc(site)}" style="display:inline-block;background:${primary};color:${fg};text-decoration:none;font-weight:700;padding:10px 22px;border-radius:999px;font-size:14px">Ir para a loja</a></p>` : ''}
     </td></tr>
     <tr><td align="center" style="border-top:1px solid #e4e4e7;padding:18px 16px;background:#ffffff">
-      ${landing && pLogo ? `<a href="${esc(landing)}" style="text-decoration:none;color:#52525b;font-size:12px"><span style="display:block;margin-bottom:6px">Desenvolvido com muita fome</span><img src="${esc(pLogo)}" alt="Pediu Lanchou" width="140" style="display:inline-block;height:auto;border:0"></a>`
-        : `<span style="color:#52525b;font-size:12px">Desenvolvido com muita fome — Pediu Lanchou</span>`}
+      ${landing && pLogo ? `<a href="${esc(landing)}" style="text-decoration:none;color:#52525b;font-size:12px"><span style="display:block;margin-bottom:6px">Desenvolvido com muita fome</span><img src="${esc(pLogo)}" alt="PediuLanchou" width="140" style="display:inline-block;height:auto;border:0"></a>`
+        : `<span style="color:#52525b;font-size:12px">Desenvolvido com muita fome — PediuLanchou</span>`}
     </td></tr>
   </table>
 </td></tr></table></body></html>`;
-  const text = `${a.storeName}\n\nSeu código de acesso: ${digits}\nValido por ${a.minutes} minutos. Se você não pediu, ignore este e-mail.\n${site ? `\nLoja: ${site}\n` : ''}\nDesenvolvido com muita fome — Pediu Lanchou${landing ? ` (${landing})` : ''}\n`;
+  const text = `${a.storeName}\n\nSeu código de acesso: ${digits}\nValido por ${a.minutes} minutos. Se você não pediu, ignore este e-mail.\n${site ? `\nLoja: ${site}\n` : ''}\nDesenvolvido com muita fome — PediuLanchou${landing ? ` (${landing})` : ''}\n`;
   return { subject, html, text };
 }

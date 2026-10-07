@@ -30,7 +30,7 @@ const Env = z.object({
   TRANSCRIBE_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
   TRANSCRIBE_API_KEY: z.string().optional(),
   TRANSCRIBE_MODEL: z.string().default('whisper-1'),
-  MAIL_FROM: z.string().default('Pediu Lanchou <nao-responda@pediulanchou.com.br>'),
+  MAIL_FROM: z.string().default('PediuLanchou <nao-responda@pediulanchou.com.br>'),
 });
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env) {

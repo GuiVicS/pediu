@@ -22,7 +22,7 @@ export default function Login() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 font-brand text-foreground">
       <form onSubmit={(e) => { e.preventDefault(); void act.run(() => login(email.trim(), password)); }} className="card w-full max-w-sm space-y-4 p-6">
-        <div className="flex items-center justify-between"><img src="/brand/logo.png" alt="Pediu Lanchou" className="h-9 w-auto dark:hidden" /><img src="/brand/logo-white.png" alt="Pediu Lanchou" className="hidden h-9 w-auto dark:block" /><ThemeToggle /></div>
+        <div className="flex items-center justify-between"><img src="/brand/logo.png" alt="PediuLanchou" className="h-9 w-auto dark:hidden" /><img src="/brand/logo-white.png" alt="PediuLanchou" className="hidden h-9 w-auto dark:block" /><ThemeToggle /></div>
         <div><h1 className="text-lg font-bold">Entrar na equipe</h1><p className="text-xs text-muted-foreground">{slug ? <>Loja: <b>{slug}</b></> : 'Em desenvolvimento, abra com ?loja=slug-da-loja'}</p></div>
         <ErrorBox>{act.error}</ErrorBox>
         <label className="block text-sm"><span className="mb-1 block text-xs font-medium text-muted-foreground">E-mail</span><input className="input" type="email" autoComplete="username" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} /></label>

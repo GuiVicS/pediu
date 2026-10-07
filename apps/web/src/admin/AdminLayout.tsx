@@ -30,7 +30,7 @@ function Shell() {
   const { orders } = useOrders({ open: true, limit: 100, sound: true });
   const novos = orders.filter((o) => o.status === 'novo').length;
   useApplyPlatformTheme();
-  useEffect(() => { document.title = 'Painel — Pediu Lanchou'; }, []);
+  useEffect(() => { document.title = 'Painel — PediuLanchou'; }, []);
   // a campainha só toca depois de um toque na página (regra dos navegadores): avisamos o lojista uma vez
   const [armed, setArmed] = useState(() => sessionStorage.getItem('pediu-sound') === '1');
   useEffect(() => { if (armed) return; const on = () => { sessionStorage.setItem('pediu-sound', '1'); setArmed(true); }; window.addEventListener('pointerdown', on, { once: true }); return () => window.removeEventListener('pointerdown', on); }, [armed]);
@@ -40,8 +40,8 @@ function Shell() {
       {open && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setOpen(false)} />}
       <aside className={cx('fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform lg:static lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
         <div className="border-b border-sidebar-border px-5 py-4">
-          <img src="/brand/logo.png" alt="Pediu Lanchou" className="h-9 w-auto dark:hidden" />
-          <img src="/brand/logo-white.png" alt="Pediu Lanchou" className="hidden h-9 w-auto dark:block" />
+          <img src="/brand/logo.png" alt="PediuLanchou" className="h-9 w-auto dark:hidden" />
+          <img src="/brand/logo-white.png" alt="PediuLanchou" className="hidden h-9 w-auto dark:block" />
           <div className="mt-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/60">Painel do lojista</div>
         </div>
         <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
@@ -66,14 +66,14 @@ function Shell() {
             </div>
           )}
           <InstallButton label="Instalar painel como app" className="flex w-full items-center gap-2 rounded-ui-sm bg-sidebar-primary px-2.5 py-2 font-medium text-sidebar-primary-foreground hover:bg-sidebar-primary/90" />
-          <a className="flex items-center gap-2 rounded-ui-sm px-2.5 py-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" href="/" target="_blank" rel="noreferrer"><ExternalLink size={15} /> Ver loja</a>
+          <a className="flex items-center gap-2 rounded-ui-sm px-2.5 py-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" href="/" target="_blank" rel="noreferrer"><ExternalLink size={15} /> Ver loja{me?.store?.status === 'desenvolvimento' && <span className="badge ml-auto bg-amber-500/20 text-amber-600">rascunho</span>}</a>
           <div className="flex items-center justify-between px-2.5 py-1 text-xs text-sidebar-foreground/60">Aparência do painel <ThemeToggle /></div>
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-3 border-b border-border bg-card px-4 py-2.5 lg:hidden">
           <button onClick={() => setOpen(true)} aria-label="Menu"><Menu size={20} /></button>
-          <img src="/brand/bubble.png" alt="Pediu Lanchou" className="h-7 w-7" />
+          <img src="/brand/bubble.png" alt="PediuLanchou" className="h-7 w-7" />
           <span className="flex-1 truncate font-semibold">Painel</span>
           <ThemeToggle />
           <span className="relative"><Bell size={18} />{novos > 0 && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-destructive" />}</span>

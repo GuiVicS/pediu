@@ -78,7 +78,7 @@ test('admin da loja A não enxerga nem edita usuários da loja B', async () => {
 });
 
 test('cardápio público e loja: só em produção; rascunho não vaza', async () => {
-  const dev = await seedStore(env, 'loja-dev', { status: 'desenvolvimento' });
+  const dev = await seedStore(env, 'loja-rascunho', { status: 'desenvolvimento' });
   for (const status of ['desenvolvimento', 'suspensa', 'arquivada']) {
     const x = await seedStore(env, `loja-${status}`, { status });
     assert.equal((await client(env).get(`/v1/store/${x.slug}`)).status, 404, `${status}: dados da loja`);
@@ -278,4 +278,27 @@ test('super admin cria o 1º administrador da loja (com autenticador reconfirmad
   await env.pools.platform.begin((q) => q`update stores set status = 'arquivada' where id = ${st!.id}`);
   env.clock.advance(6 * 60_000); await stepUp(env, sa, E);
   assert.equal((await sa.post(`/v1/platform/stores/${st!.id}/admin-user`, body)).status, 404);          // arquivada
+});
+
+test('pré-visualização: loja em desenvolvimento só abre para a equipe da própria loja e não aceita pedido', async () => {
+  const D = await seedStore(env, 'loja-previa', { status: 'desenvolvimento' });
+  const anon = client(env);
+  assert.equal((await anon.get(`/v1/store/${D.slug}`)).status, 404);
+  assert.equal((await anon.get(`/v1/store/${D.slug}/menu`)).status, 404);
+
+  const dono = await as(D, 'admin');
+  const info = await dono.get(`/v1/store/${D.slug}`);
+  assert.equal(info.status, 200); assert.equal(info.body.status, 'desenvolvimento');
+  assert.ok((await dono.get(`/v1/store/${D.slug}/menu`)).body.products.length > 0);
+  const me = await dono.get('/v1/staff/me');
+  assert.deepEqual(me.body.store, { slug: D.slug, name: `Loja ${D.slug}`, status: 'desenvolvimento' });
+
+  // pedido real continua bloqueado fora de produção, mesmo para a equipe
+  assert.equal((await checkout(dono, D)).status, 404);
+  // equipe de OUTRA loja não enxerga o rascunho
+  const outra = await as(A, 'admin');
+  assert.equal((await outra.get(`/v1/store/${D.slug}`)).status, 404);
+  // suspensa/arquivada seguem invisíveis
+  await env.pools.platform.begin((q) => q`update stores set status = 'suspensa' where id = ${D.storeId}`);
+  assert.equal((await dono.get(`/v1/store/${D.slug}`)).status, 404);
 });

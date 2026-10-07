@@ -16,7 +16,7 @@ import { CheckoutModal } from './CheckoutModal';
 import { Img } from './Img';
 import { cx } from '@/ui/kit';
 
-interface Loaded { theme: Theme; store: Store; status: { open: boolean; label: string }; menu: Menu; landingUrl: string }
+interface Loaded { theme: Theme; store: Store; status: { open: boolean; label: string }; unpublished: boolean; menu: Menu; landingUrl: string }
 
 /** Loja pública: carrega dados e cardápio da API e atualiza a cada 60 s (e ao voltar para a aba), para preço/disponibilidade nunca ficarem velhos. */
 export default function StoreLayout() {
@@ -31,7 +31,7 @@ export default function StoreLayout() {
       const [info, menu] = await Promise.all([get<any>(`/v1/store/${slug}`), get<any>(`/v1/store/${slug}/menu`)]);
       const cfg = info.settings ?? {};
       const store: Store = { ...STORE_DEFAULTS, ...cfg, name: info.name, hours: cfg.hours ?? [] };
-      setData({ theme: { ...THEME_DEFAULTS, ...(info.theme ?? {}) }, store, status: { open: !!info.open?.open, label: info.open?.label ?? '' }, menu: normalizeMenu(menu), landingUrl: info.platform?.landingUrl ?? '' });
+      setData({ theme: { ...THEME_DEFAULTS, ...(info.theme ?? {}) }, store, status: { open: !!info.open?.open, label: info.open?.label ?? '' }, unpublished: info.status === 'desenvolvimento', menu: normalizeMenu(menu), landingUrl: info.platform?.landingUrl ?? '' });
       setError(null);
     } catch (e) { setError((e as Error).message); }
   }, [slug]);
@@ -57,6 +57,7 @@ export default function StoreLayout() {
       <CartProvider>
         <div className="min-h-screen bg-t-bg font-t text-t-fg" style={theme.backgroundImageUrl ? { backgroundImage: `url(${theme.backgroundImageUrl})`, backgroundSize: 'cover', backgroundAttachment: 'fixed' } : undefined}>
           {preview && <div className="bg-amber-500/90 px-3 py-1 text-center text-[11px] font-semibold text-black">Pré-visualização</div>}
+          {value.unpublished && <div role="status" className="sticky top-0 z-[80] bg-amber-500 px-3 py-1.5 text-center text-xs font-bold uppercase tracking-wide text-black">Modo desenvolvimento — loja não publicada. Só a equipe vê esta página; pedidos desativados.</div>}
           <DraftLoader />
           <Header />
           <main className="pb-24 md:pb-10"><Outlet /></main>
@@ -106,9 +107,9 @@ function Footer() {
       <div className="font-semibold text-t-fg">{store.name}</div>
       <div>{[store.address, store.city && `${store.city}/${store.state}`, store.phone].filter(Boolean).join(' · ')}</div>
       <div className="mt-1">© {new Date().getFullYear()} {theme.footerText}</div>
-      <a href={lp} target="_blank" rel="noopener noreferrer" className="mx-auto mt-4 flex w-fit flex-col items-center gap-1.5 opacity-90 transition hover:opacity-100" aria-label="Desenvolvido com muita fome — Pediu Lanchou">
+      <a href={lp} target="_blank" rel="noopener noreferrer" className="mx-auto mt-4 flex w-fit flex-col items-center gap-1.5 opacity-90 transition hover:opacity-100" aria-label="Desenvolvido com muita fome — PediuLanchou">
         <span>Desenvolvido com muita fome</span>
-        <span className="rounded-md bg-white px-2.5 py-1.5 shadow-sm"><img src="/brand/logo-allblack.png" alt="Pediu Lanchou" className="h-5 w-auto" /></span>
+        <span className="rounded-md bg-white px-2.5 py-1.5 shadow-sm"><img src="/brand/logo-allblack.png" alt="PediuLanchou" className="h-5 w-auto" /></span>
       </a>
     </footer>
   );

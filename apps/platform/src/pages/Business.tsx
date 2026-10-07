@@ -163,7 +163,7 @@ export function StoreFooter() {
   const value = url ?? current;
   return (
     <>
-      <PageHeader title="Rodapé das lojas" subtitle="Todas as lojas mostram “Desenvolvido com muita fome” com a logo da Pediu Lanchou, ligada a este endereço." />
+      <PageHeader title="Rodapé das lojas" subtitle="Todas as lojas mostram “Desenvolvido com muita fome” com a logo da PediuLanchou, ligada a este endereço." />
       <ErrorBox>{act.error ?? l.error}</ErrorBox>
       <div className="card max-w-xl space-y-3 p-4 text-sm">
         <Field label="Link da landing page" hint="Abre em outra aba quando o cliente toca na logo. Também vai no rodapé dos e-mails de código de acesso.">
@@ -171,7 +171,7 @@ export function StoreFooter() {
         </Field>
         <div className="flex items-center gap-3 rounded-ui-sm bg-muted/60 p-3">
           <span className="text-xs text-muted-foreground">Prévia</span>
-          <span className="flex flex-col items-center gap-1 text-[11px] text-muted-foreground"><span>Desenvolvido com muita fome</span><span className="rounded-md bg-white px-2.5 py-1.5"><img src="/brand/logo-allblack.png" alt="Pediu Lanchou" className="h-5 w-auto" /></span></span>
+          <span className="flex flex-col items-center gap-1 text-[11px] text-muted-foreground"><span>Desenvolvido com muita fome</span><span className="rounded-md bg-white px-2.5 py-1.5"><img src="/brand/logo-allblack.png" alt="PediuLanchou" className="h-5 w-auto" /></span></span>
         </div>
         <button className="btn" disabled={act.busy || !/^https?:\/\/\S+$/i.test(value) || value === current}
           onClick={() => act.run(async () => { await stepUp(() => put('/v1/platform/public-settings', { landingUrl: value.trim() })); toast('Link salvo'); setUrl(null); l.reload(); })}><Save size={14} /> Salvar</button>

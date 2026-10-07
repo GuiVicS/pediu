@@ -1,0 +1,15 @@
+{
+  "id": "/",
+  "name": "PediuLanchou — Super admin",
+  "short_name": "Super admin",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "lang": "pt-BR",
+  "background_color": "#ffffff",
+  "theme_color": "#2b7fff",
+  "icons": [
+    { "src": "/brand/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/brand/mark-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

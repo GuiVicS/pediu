@@ -84,7 +84,8 @@ export function staffRoutes(app: FastifyInstance, ctx: Ctx) {
 
   app.get(`${P}/me`, { preHandler: staffGuard(ctx) }, async (req) => {
     const s = req.staff!;
-    return { name: s.name, role: s.role, storeId: s.storeId };
+    const [st] = await withTenant(ctx.pools, s.tenantId, (q) => q`select slug, name, status from stores where id = ${s.storeId}`);
+    return { name: s.name, role: s.role, storeId: s.storeId, store: st ? { slug: st.slug as string, name: st.name as string, status: st.status as string } : null };
   });
 
   app.post(`${P}/logout`, async (req, reply) => {

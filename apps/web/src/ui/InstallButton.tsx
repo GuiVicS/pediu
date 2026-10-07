@@ -15,7 +15,7 @@ export function InstallButton({ className = '', label = 'Instalar app' }: { clas
         <ol className="space-y-3 text-sm">
           <li className="flex items-center gap-2">1. Toque em <Share size={16} /> <b>Compartilhar</b> na barra do Safari.</li>
           <li className="flex items-center gap-2">2. Escolha <SquarePlus size={16} /> <b>Adicionar à Tela de Início</b>.</li>
-          <li>3. Confirme em <b>Adicionar</b>. O app abre em tela cheia e funciona offline.</li>
+          <li>3. Confirme em <b>Adicionar</b>. O app abre em tela cheia, direto nesta tela. Precisa de internet para funcionar.</li>
         </ol>
       </Modal>
     </>

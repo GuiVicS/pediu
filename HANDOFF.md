@@ -1,14 +1,30 @@
-# Handoff de continuidade — Pediu
+# Handoff de continuidade — PediuLanchou
 
-Atualizado em 2026-10-07, após recuperar a sessão Claude `ef411d89-dcec-46eb-8ae2-c9e532876881`. Este arquivo é o ponto de entrada para continuar em outra ferramenta. O código em andamento acompanha este handoff no mesmo push; não depende do acesso ao histórico do Claude.
+Atualizado em 2026-10-07. Este arquivo é o ponto de entrada para continuar em outra ferramenta ou sessão. A plataforma se chama **PediuLanchou** (nome técnico `pediu` em pacotes, cookies e variáveis). Branch de trabalho atual: `claude/sync-guivics-pediu-diwhg5` (PR GuiVicS/pediu#1).
 
 ## Comece aqui
 
-1. Leia este arquivo e `README.md`. O repositório é `https://github.com/GuiVicS/pediu`, branch `main`.
-2. Confira `git status` e os commits recentes. A compilação foi conferida nesta passagem; veja a seção de validação.
-3. O pedido mais recente é **planejar a extensão Chrome/WhatsApp**. Ainda não existe planejamento concluído nem implementação. Preserve também os pedidos de clientes, cupons, login por telefone e PWA.
-4. Há uma implementação inicial de clientes por **e-mail**, não por telefone. Não a apresente como conclusão do pedido original.
-5. Antes de publicar novos builds, confirme a migration de clientes no banco alvo e configure SMTP. O código no Git e a imagem Docker atualmente em execução podem estar em versões diferentes.
+1. Leia este arquivo, `README.md` e o **guia didático** `docs/GUIA-DIDATICO.md` (versão em página única: `docs/GUIA-DIDATICO.html`).
+2. Confira `git status`, `git log` e rode `npm run check` e os testes (comandos na seção “Validação e comandos”).
+3. A seção **“Estado atual e pendências”** (logo abaixo) é a lista de verdade. As seções históricas mais adiante (“Atualização — …”) registram o que cada passagem fez e podem citar estados já superados; em caso de conflito vale esta seção.
+4. O que existe como código mas **não foi validado no mundo real** está marcado como tal. Não apresente como pronto algo sem teste real.
+
+## Estado atual e pendências (2026-10-07)
+
+**Implementado e testado por testes automáticos** (API 74, extensão 18, shared 27, edge 3, SQL de isolamento incl. `rls_whatsapp.sql`):
+clientes por e-mail e histórico; rodapé configurável; checklist de funcionalidades por loja (super admin); pareamento da extensão com a sessão do lojista; catálogo/orçamento/consulta de pedido para o agente; respostas rápidas; agente de IA (Claude) com ferramentas, áudio (Whisper) e imagem; rascunho de pedido com link; modo automático/assistido com pausa por humano; disparos com ritmo e envio incerto nunca repetido; pré-visualização da loja em desenvolvimento para a equipe; PWA por tela (vitrine, painel, PDV, garçom, entregador) e do super admin; guias HTML responsivos com modo escuro.
+
+**Pendências que dependem de decisão do dono do produto**
+1. **Login do cliente por telefone** (pedido original; hoje é código por e-mail). Decidir canal (SMS? WhatsApp? custo) e fluxo.
+2. **Cupons/resgate** (pedido original). Decidir validade, limites, desconto, vínculo à conta, regras de uso.
+3. Repositório separado do guia: a integração do GitHub destas sessões não cria repositórios (erro 403). O dono cria um repositório privado vazio e sobe a pasta `pediulanchou-guia` (ou o anexa à sessão).
+
+**Pendências de validação real (exigem ambiente, conta ou hardware)** — lista detalhada em `docs/TESTES.md`, seção 10:
+WhatsApp Web real + WA-JS 4.6.1 (o usuário relatou erro vindo de `wppconnect-wa.js`/`wrapModuleFunction`; faltou a mensagem do erro e a versão do WhatsApp Web); chamadas reais à Anthropic e ao Whisper; disparos reais; PWA em Android/iPhone; preview e telas no navegador; migrations (9) em banco real/Portainer; SMTP real; impressora física e agente de impressão no Windows (sem instalador nem início automático documentado/validado).
+
+**Pendências de ambiente (fora do Git)**: stack local `C:\Users\thnkad\pediu-local`, super admin `claude@pediu.local` (remover se desnecessário), token MCP (30 dias), vincular categorias à zona Cozinha, criar administrador da loja demo. Não há `.mcp.json` no repositório (a associação `supabase-pediu` citada antes não existe aqui).
+
+**Melhorias sugeridas**: lista completa na Parte 10 do guia didático.
 
 ## Objetivo e pedidos do usuário
 
@@ -80,32 +96,18 @@ Rotas da equipe: `GET /v1/staff/customers`, `GET /v1/staff/customers/:id/orders`
 - Login por telefone **não implementado**; telefone atual é apenas contato. Decidir canal de verificação e fluxo, preservando o requisito do usuário.
 - Cupons/resgate **não implementados nesta entrega**. Definir validade, limites, aplicação de desconto, vínculo à conta e regras de uso.
 - SMTP necessário: `SMTP_HOST`, `SMTP_PORT` (587 por padrão), `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`. Sem SMTP, solicitação de código responde 503.
-- `deploy/docker-compose.portainer.yml` ainda não repassa as variáveis SMTP; adicioná-las ao ambiente do serviço API antes de usar login de clientes nesse deploy.
-- Confirmar aplicação da nova migration no banco local e no de produção; esta passagem não alterou bancos nem reiniciou a stack.
+- `deploy/docker-compose.portainer.yml` já repassa as variáveis SMTP e as do agente (feito em 2026-10-07).
+- Confirmar aplicação das **9 migrations** no banco local e no de produção; as passagens deste trabalho não alteraram bancos nem reiniciaram a stack.
 - Validar entrega real de e-mail e navegação visual no navegador, incluindo identidade da loja, logo, rodapé e responsividade.
 
-## Extensão Chrome/WhatsApp — próximo trabalho
+## Extensão Chrome/WhatsApp
 
-Estado: pedido recuperado do histórico, **planejamento e implementação pendentes**. Nenhum código da Orbita foi copiado para este repositório.
-
-Referência local existente: `C:\Users\thnkad\Documents\extensão\Orbita-Extensao`. Contém `manifest.json`, pastas `js`, `css`, `fonts`, `icons`, `mcp`, `tools`, e páginas `popup.html`, `options.html`, `quick-replies.html`, `conversas.html`, `dashboard.html`, `offscreen.html`. Apenas a existência/listagem foi conferida; os mecanismos internos ainda precisam ser analisados. Essa referência não acompanha o Git, portanto outra máquina precisará ter acesso a ela para reproduzir o estudo.
-
-Sequência proposta para elaborar o planejamento:
-
-1. Inspecionar manifesto, scripts, comunicação com WhatsApp Web, filas e armazenamento da Orbita; documentar o mecanismo observado e as limitações.
-2. Consultar documentação oficial atual do WA-JS antes de definir métodos de envio/eventos e compatibilidade com Chrome Manifest V3.
-3. Mapear autenticação do lojista em `apps/web/src/lib/session.tsx` e API de equipe. Definir vínculo explícito extensão–usuário–loja, permissões e revogação. A sessão do WhatsApp Web e a sessão do Pediu são sessões distintas.
-4. Descrever experiência de conexão, status do WhatsApp, respostas rápidas (horário, cardápio, entrega, pagamento, pedido em preparo/saiu), variáveis e edição pelo lojista.
-5. Descrever disparos: seleção de destinatários autorizados, prévia, fila, pausa/cancelamento, tratamento de falhas e deduplicação. Não executar envios durante o estudo.
-6. Descrever IA por conversa: contexto autorizado de loja/pedido, configuração pelo lojista, modo assistido/automático, transferência para humano e controle por conversa. Não colocar chaves de IA no pacote da extensão; definir backend e limites de acesso.
-7. Entregar documento técnico com arquitetura, modelo de dados, contratos API, etapas, riscos concretos e critérios de validação. Identificar o que é proposta versus requisito já solicitado.
+Planejamento e implementação concluídos no código (etapas 1 a 7 do `docs/PLANO-EXTENSAO-WHATSAPP.md`). A referência local Orbita (`C:\Users\thnkad\Documents\extensão\Orbita-Extensao`) não acompanha o Git e não foi copiada. Detalhes das entregas e do que falta validar: seções “Atualização” mais abaixo e `docs/TESTES.md` seção 10.
 
 ## PWA e preview de loja
 
-- `apps/web/src/lib/pwa.ts` já registra `/sw.js` em produção e oferece instalação/ajuda iOS. Conferir como o edge fornece manifesto, service worker e identidade por loja.
-- Validar instalação da vitrine e do painel, escopo de navegação, atualização e comportamento de sessão. O pedido “admin também” deve ser esclarecido a partir da arquitetura existente (painel do lojista e super admin são apps diferentes).
-- Preview continua pendente: `apps/api/src/orders.ts` só permite vitrine pública e checkout em `producao`; a área do cliente segue a mesma regra.
-- Proposta anterior registrada: preview autenticado ou token assinado e temporário, faixa “MODO DESENVOLVIMENTO — loja não publicada”, botão “Ver loja”; manter pedidos reais bloqueados fora de produção ou definir pedidos de teste explicitamente.
+- **PWA (feito, falta validar em aparelhos reais):** o edge (`apps/web-edge/src/edge.ts`) serve um manifesto por loja e um por tela de operação (`/manifest.webmanifest?app=garcom|entregador|pdv|painel`, `id` e `start_url` próprios, ícone da loja ou da marca; o HTML de cada rota recebe o link certo). `AppShell` e o painel têm botão **Instalar** (iPhone mostra o passo a passo). O service worker é mínimo e **não guarda cache de propósito** (lojas em versões diferentes). O super admin é instalável (`apps/platform/public/manifest.webmanifest`, `sw.js`, ícones). Validar: instalação, atualização, escopo e sessão em Android/iPhone.
+- **Preview (feito, falta validar no navegador):** `viewableStore` em `apps/api/src/orders.ts` libera `GET /v1/store/:slug` e `/menu` de loja em `desenvolvimento` **só para a equipe logada da própria loja**; a vitrine mostra a faixa “Modo desenvolvimento — loja não publicada” e desativa o checkout; `/v1/staff/me` devolve `store.status` e o botão “Ver loja” do painel marca “rascunho”. Pedidos e área do cliente continuam só em produção. Não existe link de prévia para quem não é da equipe (poderia ser um token assinado e temporário).
 
 ## Stack local e loja de exemplo
 
@@ -159,16 +161,17 @@ Operação do ambiente local (somente nessa máquina): entrar em `C:\Users\thnka
 
 ## Ordem recomendada de continuidade
 
-1. Elaborar o planejamento da extensão solicitado, estudando Orbita e WA-JS.
-2. Resolver diferença entre login por telefone solicitado e código por e-mail implementado; planejar/implementar cupons.
-3. Preparar migration, SMTP e deploy do código de clientes; validar conta, pedidos e isolamento de ponta a ponta.
-4. Conferir PWA da loja/painel e super admin conforme o pedido.
-5. Implementar preview autenticado e botão “Ver loja”.
-6. Seguir `docs/PORTAINER-DEPLOY.md`, ajustando para seis migrations e SMTP, e validar deploy num ambiente dedicado ao Pediu.
+1. Decidir login por telefone e cupons (ver “Estado atual e pendências”) e implementar.
+2. Mergear o PR, aplicar as **9 migrations** (lista na Parte 7.3 do guia) em banco dedicado, configurar SMTP e as chaves do agente/Whisper e atualizar a Stack (`docs/PORTAINER-DEPLOY.md`).
+3. Rodar a validação real da lista de `docs/TESTES.md` seção 10, começando pelo WhatsApp Web com conta de teste (e investigar o erro do WA-JS com a mensagem completa).
+4. Instalador do agente de impressão para Windows (início automático) e validação com impressora física.
+5. Manter `docs/GUIA-DIDATICO.md` e o HTML atualizados.
 
 Atualize este handoff após cada etapa com mudanças, testes efetivamente executados e pendências concretas. Evite marcar uma proposta como funcionalidade pronta.
 
 ## Atualização final — plano do agente delivery (2026-10-07)
+
+> Histórico: a implementação pendente citada aqui já foi feita (ver as seções “Atualização” seguintes e “Estado atual e pendências”).
 
 O planejamento está concluído em `docs/PLANO-EXTENSAO-WHATSAPP.md`; **a implementação permanece pendente**. Esta atualização substitui os trechos anteriores que dizem que o planejamento ainda não existe ou que a Orbita só foi listada.
 

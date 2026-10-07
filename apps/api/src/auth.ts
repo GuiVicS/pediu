@@ -8,7 +8,7 @@ import { LOCK_MS, MAX_FAILED, SESSION_COOKIE, STEPUP_TTL_MS, type Ctx } from './
 import { audit, fail, parse } from './http.js';
 import { createSession, guard } from './session.js';
 
-const ISSUER = 'Pediu Lanchou';
+const ISSUER = 'PediuLanchou';
 let dummyHash: Promise<string> | undefined; // evita revelar por tempo de resposta se o e-mail existe
 
 /** Confere o código TOTP com anti-replay. Grava o passo usado (dentro da transação do chamador). */

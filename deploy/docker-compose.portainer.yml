@@ -25,7 +25,7 @@ services:
       SMTP_SECURE: ${SMTP_SECURE:-false}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
-      MAIL_FROM: ${MAIL_FROM:-Pediu Lanchou <nao-responda@pediulanchou.com.br>}
+      MAIL_FROM: ${MAIL_FROM:-PediuLanchou <nao-responda@pediulanchou.com.br>}
       # agente de atendimento WhatsApp (sem chave o agente/transcrição respondem 503)
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       AGENT_MODEL: ${AGENT_MODEL:-claude-haiku-4-5-20251001}

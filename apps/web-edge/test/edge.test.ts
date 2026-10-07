@@ -1,0 +1,47 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { appForPath, buildEdge, manifestFor, PWA_APPS, type Resolved } from '../src/edge.js';
+
+const store: Resolved = { storeId: 's1', slug: 'burger-lab', name: 'Burger Lab', status: 'producao', version: null, source: 'builtin', supportEnded: false, themeColor: '#c0392b', iconUrl: null, description: null, title: null };
+
+function app() {
+  const dir = mkdtempSync(join(tmpdir(), 'edge-'));
+  mkdirSync(join(dir, 'web', 'builtin'), { recursive: true });
+  writeFileSync(join(dir, 'web', 'builtin', 'index.html'), '<!doctype html><html><head><!--pediu-head--></head><body></body></html>');
+  const fetchImpl = (async () => new Response(JSON.stringify(store), { status: 200 })) as typeof fetch;
+  return buildEdge({ apiUrl: 'http://api.test', edgeSecret: 's', builtinDir: dir, cacheDir: join(dir, 'cache'), fetchImpl } as never);
+}
+const get = (a: ReturnType<typeof app>, url: string) => a.inject({ method: 'GET', url, headers: { host: 'burger-lab.pediu.test' } });
+
+test('appForPath reconhece só as telas de operação', () => {
+  assert.equal(appForPath('/garcom'), 'garcom'); assert.equal(appForPath('/painel/pedidos'), 'painel');
+  assert.equal(appForPath('/pdv'), 'pdv'); assert.equal(appForPath('/entregador'), 'entregador');
+  assert.equal(appForPath('/'), null); assert.equal(appForPath('/categoria/1'), null); assert.equal(appForPath('/garcomx'), null);
+});
+
+test('manifesto da loja abre na vitrine; o de cada app abre direto na tela dele, com instalação própria', () => {
+  const m = manifestFor(store);
+  assert.equal(m.start_url, '/?source=pwa'); assert.equal(m.id, '/'); assert.equal(m.name, 'Burger Lab');
+  const g = manifestFor(store, 'garcom');
+  assert.equal(g.start_url, '/garcom?source=pwa'); assert.equal(g.id, '/garcom'); assert.equal(g.name, 'Burger Lab · Garçom'); assert.equal(g.scope, '/');
+  assert.deepEqual(new Set(Object.keys(PWA_APPS).map((k) => manifestFor(store, k).id)).size, 4);
+  assert.equal(manifestFor(store, 'inexistente').id, '/');
+  // instalável: sempre há ícone de 192 px ou mais; app de operação usa a marca da plataforma, a loja usa o próprio ícone quando tem
+  assert.ok(m.icons.some((i) => i.sizes === '192x192'));
+  assert.equal(manifestFor({ ...store, iconUrl: '/uploads/logo.png' }).icons[0]!.src, '/uploads/logo.png');
+  assert.equal(manifestFor({ ...store, iconUrl: '/uploads/logo.png' }, 'pdv').icons[0]!.src, '/brand/icon-192.png');
+});
+
+test('o edge serve o manifesto certo e injeta o link no HTML de cada rota', async () => {
+  const a = app();
+  const man = await get(a, '/manifest.webmanifest?app=entregador');
+  assert.equal(man.statusCode, 200); assert.equal(man.json().start_url, '/entregador?source=pwa');
+  assert.equal((await get(a, '/manifest.webmanifest?app=hack')).json().start_url, '/?source=pwa');
+  assert.match((await get(a, '/garcom')).body, /<link rel="manifest" href="\/manifest\.webmanifest\?app=garcom">/);
+  assert.match((await get(a, '/painel/produtos')).body, /manifest\.webmanifest\?app=painel/);
+  const home = (await get(a, '/')).body;
+  assert.match(home, /<link rel="manifest" href="\/manifest\.webmanifest">/); assert.doesNotMatch(home, /\?app=/);
+});

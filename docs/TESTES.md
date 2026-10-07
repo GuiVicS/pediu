@@ -91,3 +91,18 @@ A fase de telas/impressão/pagamentos/iFood/versões alterou código usado pelos
 4. **iFood**: campos reais de `payments.methods`, `delivery.deliveredBy` e valores (`total.benefits`) — escrevi pelo que a documentação indica.
 5. **Agente no Windows**: `copy /b arquivo \\localhost\COMPARTILHAMENTO` envia bytes crus? (depende do driver/spooler; se não, usar porta de rede 9100 ou RAW via `print /d:`).
 6. **Cupom**: `GS ( k` (QR) e `GS V 66 3` (corte) em modelos específicos; `ESC B` (beep) só em quem tem buzzer.
+
+
+## 10. Atendimento WhatsApp, preview e PWA (adicionado em 2026-10-07)
+Legenda como acima. Os `[auto]` já existem e passam (`apps/api/test/whatsapp.test.ts`, `extension.test.ts`, `staff-orders.test.ts`, `apps/whatsapp-extension/test`, `apps/web-edge/test`, `packages/db/supabase/tests/rls_whatsapp.sql`). Os itens abaixo são o que **ainda falta validar no mundo real**.
+
+- [ ] [real] **WhatsApp Web real** com conta de teste: a extensão carrega, o painel azul aparece, `chat.new_message` entrega texto/áudio/imagem, ids `@lid`, baixar áudio e imagem, enviar texto. Anotar a versão do WhatsApp Web e confirmar a compatibilidade com o WA-JS 4.6.1.
+- [ ] [real] **Reconexão**: fechar/reabrir o WhatsApp Web, dormir/acordar o computador, o service worker encerrado: a ponte volta sozinha e nada é enviado em dobro.
+- [ ] [real] **Claude (agente)**: chave real; respostas de qualidade para pedido, taxa, horário, reclamação; tentativas de injeção ("ignore as regras...") não funcionam; comprovante de pagamento chama humano; custo por conversa.
+- [ ] [real] **Whisper**: áudio OGG/Opus do WhatsApp (curto, longo, com ruído, silêncio); limite de ~5 MB; português.
+- [ ] [real] **Modo automático**: só depois de dias em modo assistido; mensagem nova durante o processamento descarta a resposta antiga; atendente escrevendo pausa o agente.
+- [ ] [real] **Disparos**: poucos contatos de teste que aceitaram; ritmo de 1 a cada ~20 s; fechar o Chrome no meio e conferir que nada é reenviado (ficam "incertos"); observar sinais de limitação do número.
+- [ ] [manual] **Rascunho de pedido**: abrir o link `?rascunho=` no celular: itens e adicionais corretos no carrinho, preço final recalculado no checkout; link vencido (24 h) abre a loja normalmente.
+- [ ] [manual] **Preview**: com a loja em `desenvolvimento`, entrar como equipe e abrir a vitrine (faixa amarela, checkout desativado); sem login e com a equipe de outra loja deve dar "não encontrada"; depois de publicar, a faixa some.
+- [ ] [real] **PWA** em Android (Chrome) e iPhone (Safari): instalar a vitrine, o painel, `/garcom`, `/entregador`, `/pdv` e o super admin; cada um abre direto na própria tela, em tela cheia; ícone da marca; reinstalar depois de atualizar; sessão vencida volta ao login.
+- [ ] [manual] **Responsividade e modo escuro** dos guias (`docs/GUIA-DIDATICO.html` e `docs/index.html`) em Safari/iPhone e em telas pequenas.

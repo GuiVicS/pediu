@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { withTenant, type Q } from '@pediu/db';
 import {
@@ -12,7 +12,7 @@ import { afterOrder } from './orderHooks.js';
 import { syncStatusToIfood } from './ifood.js';
 import { gatewayConfigured, startOnlinePayment } from './payments.js';
 import { GatewayError } from './gateways.js';
-import { resolveStore, staffGuard } from './staff.js';
+import { loadStaff, resolveStore, staffGuard } from './staff.js';
 import { loadCustomer } from './customers.js';
 
 const uuid = z.string().uuid();
@@ -76,12 +76,22 @@ export async function insertOrder(q: Q, a: {
 /** O público só enxerga lojas no ar. Rascunho (desenvolvimento), suspensa e arquivada respondem como inexistentes. */
 const publicStore = async (ctx: Ctx, slug: string) => { const s = await resolveStore(ctx, slug); return s && s.status === 'producao' ? s : null; };
 
+/** Vitrine para leitura: lojas no ar para qualquer pessoa; loja em `desenvolvimento` só para a equipe logada DESTA loja (pré-visualização). Pedidos continuam só em produção. */
+const viewableStore = async (ctx: Ctx, req: FastifyRequest, slug: string) => {
+  const s = await resolveStore(ctx, slug);
+  if (!s) return null;
+  if (s.status === 'producao') return s;
+  if (s.status !== 'desenvolvimento') return null;
+  const staff = await loadStaff(ctx, req);
+  return staff && staff.storeId === s.storeId && staff.tenantId === s.tenantId ? s : null;
+};
+
 export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
   // ---------------- público: a loja online ----------------
   const pub = '/v1/store/:slug';
 
   app.get(`${pub}`, async (req, reply) => {
-    const store = await publicStore(ctx, (req.params as { slug: string }).slug);
+    const store = await viewableStore(ctx, req, (req.params as { slug: string }).slug);
     if (!store) return fail(reply, 404, 'not_found', 'Loja não encontrada.');
     return withTenant(ctx.pools, store.tenantId, async (q) => {
       const [settings] = await q`select data from store_settings where store_id = ${store.storeId}`;
@@ -92,7 +102,7 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
   });
 
   app.get(`${pub}/menu`, async (req, reply) => {
-    const store = await publicStore(ctx, (req.params as { slug: string }).slug);
+    const store = await viewableStore(ctx, req, (req.params as { slug: string }).slug);
     if (!store) return fail(reply, 404, 'not_found', 'Loja não encontrada.');
     return withTenant(ctx.pools, store.tenantId, (q) => loadMenu(q, store.storeId));
   });
@@ -107,7 +117,7 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
       lines: z.array(lineIn).min(1).max(60),
     }), req.body, reply); if (!b) return;
     const store = await resolveStore(ctx, slug);
-    if (!store || store.status !== 'producao') return fail(reply, 404, 'not_found', 'Loja não encontrada ou ainda não está no ar.');
+    if (!store || store.status !== 'producao') return fail(reply, 404, 'not_found', 'Loja não encontrada ou ainda não está no ar. Pedidos só são aceitos depois que a loja for publicada.');
     const customer = await loadCustomer(ctx, req, store);   // logado: o pedido entra no histórico dele
     const out = await withTenant(ctx.pools, store.tenantId, async (q) => {
       const [settings] = await q`select data from store_settings where store_id = ${store.storeId}`;

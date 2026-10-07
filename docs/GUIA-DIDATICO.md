@@ -263,7 +263,7 @@ flowchart LR
 
 ### 6.1 Super admin (nossa equipe)
 
-Acesso: endereço da API (ex.: `https://api.SEUDOMINIO`). O primeiro super admin é criado por comando (Parte 7.2, passo 6). No primeiro login é obrigatório cadastrar o **autenticador** (TOTP) e guardar os **códigos de recuperação** num lugar seguro.
+Acesso: endereço da API (ex.: `https://api.SEUDOMINIO`). O super admin também pode ser **instalado como app** (menu do navegador → Instalar). O primeiro super admin é criado por comando (Parte 7.2, passo 6). No primeiro login é obrigatório cadastrar o **autenticador** (TOTP) e guardar os **códigos de recuperação** num lugar seguro.
 
 | Menu | Para que serve |
 |---|---|
@@ -287,7 +287,7 @@ Acesso: endereço da API (ex.: `https://api.SEUDOMINIO`). O primeiro super admin
 
 ### 6.2 Painel do lojista (`/painel`)
 
-Entrar em `https://SUALOJA/entrar` com e-mail e senha da equipe.
+Entrar em `https://SUALOJA/entrar` com e-mail e senha da equipe. O botão **Ver loja** (menu lateral) abre a vitrine; enquanto a loja estiver em `desenvolvimento`, **só a equipe logada vê a vitrine**, com uma faixa amarela "Modo desenvolvimento" e pedidos desativados (o botão mostra a marca *rascunho*). O botão **Instalar painel como app** instala o painel no computador ou celular.
 
 | Menu | O que configurar |
 |---|---|
@@ -550,8 +550,8 @@ Separadas entre o que já foi **pedido pelo dono do produto** e o que é **ideia
 |---|---|
 | Login do cliente por **telefone** | Hoje é código por e-mail. Precisa escolher o canal (SMS ou WhatsApp) e custo |
 | **Cupons** e resgate | Definir validade, limites, vínculo à conta |
-| **Visualizar loja em desenvolvimento** | Link de prévia seguro + faixa "MODO DESENVOLVIMENTO" e botão "Ver loja" |
-| **PWA** da vitrine e do painel | Existe infraestrutura; falta validar instalação, escopo e atualização |
+| ~~Visualizar loja em desenvolvimento~~ | **Feito** (falta validar no navegador): a equipe logada da própria loja vê a vitrine em rascunho com a faixa "MODO DESENVOLVIMENTO" e o botão "Ver loja" marca "rascunho"; pedidos seguem bloqueados. Falta, se quiserem, link de prévia para o *cliente do lojista* ver sem login |
+| **PWA** (vitrine, painel, PDV, garçom, entregador e super admin) | **Feito no código** (cada tela instala como app próprio; super admin também); falta validar instalação e atualização em Android/iPhone reais |
 | Validação real da extensão do WhatsApp | Conta de teste, áudio/imagem reais, chaves de IA, qualidade do prompt |
 
 ### Ideias (propostas, não requisitos)
@@ -562,7 +562,7 @@ Separadas entre o que já foi **pedido pelo dono do produto** e o que é **ideia
 | Pedido | Criar pedido direto da conversa (com confirmação do cliente e idempotência) em vez de só rascunho |
 | Operação | Notificação push para o lojista; relatórios exportáveis; controle de estoque; impressão de etiqueta |
 | Marketing | Segmentação de clientes, campanhas agendadas, programa de fidelidade |
-| Celulares (PWA) | Atalhos próprios para `/garcom`, `/entregador` e `/pdv` (hoje o app instalado abre na vitrine), sessão mais longa para a equipe em dispositivo dedicado, aviso quando a sessão está prestes a expirar |
+| Celulares (PWA) | Sessão mais longa para a equipe em dispositivo dedicado, aviso quando a sessão está prestes a expirar, funcionamento básico offline (hoje não há cache de propósito) |
 | Impressão | Instalador do agente (`.exe`/serviço do Windows que inicia sozinho) em vez de Node.js + linha de comando |
 | Segurança | Renovação de credencial da extensão sem reconectar; auditoria visível ao lojista; 2FA para o lojista |
 | Plataforma | Painel de custos de IA por loja; limites por plano ligados ao checklist de funcionalidades; CI automático (GitHub Actions) rodando `check` e testes em cada PR |
@@ -637,6 +637,7 @@ Entre em `https://SLUG.pediulanchou.com.br/entrar` com o administrador.
 - [ ] **Destaques**: escolher os campeões de venda.
 - [ ] **Pagamentos**: ativar Pix, dinheiro, cartão na entrega. Para pagamento **online**, conectar o gateway (12.7).
 - [ ] **Usuários (equipe)**: criar uma conta por pessoa **com o perfil certo** (Parte 3): gerente, suporte, balcão, garçom, entregador. **Nunca** compartilhar a conta do administrador.
+- [ ] **Conferir a vitrine em rascunho:** painel → **Ver loja** (a loja ainda está em `desenvolvimento`, então só você, logado, vê). Percorra as categorias, abra produtos com adicionais e confira preços e fotos no celular.
 - [ ] **Domínio próprio** (se houver): painel → Domínios → adicionar → pedir ao responsável do DNS para criar o **CNAME** e o **TXT** mostrados → *Verificar* (Parte 6.2).
 
 ### 12.3 Impressoras de cupom (cozinha, bar, caixa)
@@ -682,14 +683,14 @@ PWA = o site instalado como aplicativo na tela inicial do celular. Cada pessoa u
 
 **Instalação (por celular)**
 - [ ] Abrir `https://SLUG.pediulanchou.com.br/entrar` e **entrar com o e-mail e a senha da pessoa**.
-- [ ] Garçom: confirmar que abre a tela de mesas (`/garcom`). Entregador: tela de entregas (`/entregador`).
-- [ ] **Android:** menu do Chrome (⋮) → **Instalar app** (ou *Adicionar à tela inicial*) → confirmar.
+- [ ] Garçom: confirmar que abre a tela de mesas (`/garcom`). Entregador: tela de entregas (`/entregador`). No iPhone o botão **Instalar** mostra o passo a passo do Safari.
+- [ ] **Android:** botão **Instalar** no topo da própria tela (ou menu do Chrome ⋮ → **Instalar app**) → confirmar. Faça **a partir da tela certa** (`/garcom` para o garçom, `/entregador`, `/pdv`): cada tela se instala como um app separado que abre direto nela. ⚠️ Comportamento novo, ainda não validado em celulares reais.
 - [ ] **iPhone:** botão **Compartilhar** → **Adicionar à Tela de Início** → *Adicionar*.
-- [ ] Abrir o ícone novo na tela inicial e conferir que o app abre em tela cheia.
+- [ ] Abrir o ícone novo na tela inicial e conferir que o app abre **em tela cheia e direto na tela dele** (mesas para o garçom). Se abrir na vitrine, desinstale e instale de novo a partir da tela certa.
 - [ ] Renomear o ícone se quiser ("Garçom Burger Lab").
 
 ⚠️ **Limitações conhecidas — explique ao cliente**
-- O app instalado abre **na vitrine da loja** (o atalho aponta para a página inicial). O garçom precisa entrar pelo login e ir para a tela de mesas; **se a sessão estiver ativa**, entra direto. Melhoria planejada: atalho próprio para `/garcom` e `/entregador` (Parte 10).
+- O app instalado precisa de login: se a sessão tiver vencido, ele abre a tela de entrada. Cada tela (garçom, entregador, PDV, painel) é instalada separadamente.
 - A **sessão da equipe dura 12 horas e expira após 2 horas sem uso**. No começo do turno, abra o app e confirme que está logado; se pedir login, entre de novo. Não é defeito.
 - Sem internet o app **não** lança pedidos: depende do Wi-Fi.
 - Cada pessoa com a **própria conta**: não compartilhe login (o histórico mostra quem fez cada ação).
