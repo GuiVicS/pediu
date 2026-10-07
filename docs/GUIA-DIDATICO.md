@@ -790,6 +790,7 @@ Faça **como se fosse um cliente de verdade**, com a equipe acompanhando:
 | Documento | Conteúdo |
 |---|---|
 | `README.md` | Resumo do repositório e regras |
+| `docs/O-QUE-E-PEDIULANCHOU.md` | Apresentação do produto: o que é, para quem, o que oferece, como funciona e em que pé está |
 | `docs/GUIA-DIDATICO.md` | Este guia (texto) |
 | `docs/GUIA-DIDATICO.html` | O mesmo guia em página única: responsivo (celular, tablet, computador), tema da plataforma com **modo escuro**, índice, fluxogramas e checklists clicáveis. Abra no navegador; funciona offline. É **gerado** a partir deste `.md` pelo script do repositório do guia (`tools/build-html.mjs`) |
 | `docs/index.html` | Assistente de instalação e operação passo a passo (abre no navegador) |

@@ -2,6 +2,8 @@
 
 Base de produção do Pediu Lanchou. A demo continua separada em `../pediu-mvp`.
 
+**O que é o PediuLanchou?** Veja [`docs/O-QUE-E-PEDIULANCHOU.md`](docs/O-QUE-E-PEDIULANCHOU.md).
+
 **Novo na equipe?** Comece por [`docs/GUIA-DIDATICO.md`](docs/GUIA-DIDATICO.md): termos, fluxogramas, uso das telas, Portainer e código, sem exigir conhecimento técnico.
 
 Assistente passo a passo de instalação: abra `docs/index.html` no navegador (arquivo único, funciona offline). Estado do trabalho: [`HANDOFF.md`](HANDOFF.md).
