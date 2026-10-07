@@ -13,6 +13,7 @@ import { syncStatusToIfood } from './ifood.js';
 import { gatewayConfigured, startOnlinePayment } from './payments.js';
 import { GatewayError } from './gateways.js';
 import { resolveStore, staffGuard } from './staff.js';
+import { loadCustomer } from './customers.js';
 
 const uuid = z.string().uuid();
 const selection = z.array(z.object({ groupId: uuid, addonIds: z.array(uuid).max(30) })).max(20).default([]);
@@ -51,7 +52,7 @@ const event = (q: Q, o: { orderId: string; storeId: string; tenantId: string }, 
 export async function insertOrder(q: Q, a: {
   storeId: string; tenantId: string; channel: 'loja' | 'pdv' | 'garcom' | 'ifood'; type: OrderType; lines: NonNullable<Awaited<ReturnType<typeof buildLines>>['lines']>;
   customerName: string; phone: string; address: string; zoneId: string | null; feeCents: number; table: number | null; note: string; payment: string; changeForCents: number | null;
-  createdBy: string | null; paid?: boolean; status?: OrderStatus;
+  createdBy: string | null; paid?: boolean; status?: OrderStatus; customerId?: string | null;
   discountCents?: number; paidMethod?: string; external?: { provider: string; ref: string; data?: unknown };
 }) {
   const subtotal = a.lines.reduce((s, l) => s + l.totalCents, 0);
@@ -59,10 +60,10 @@ export async function insertOrder(q: Q, a: {
   const total = subtotal + a.feeCents - discount;
   const number = await nextNumber(q, a.storeId, a.tenantId);
   const [o] = await q`insert into orders (store_id, tenant_id, number, channel, type, status, customer_name, customer_phone, address, zone_id, table_number, note,
-      subtotal_cents, fee_cents, discount_cents, total_cents, payment_method, change_for_cents, paid, paid_at, paid_method, created_by, external_provider, external_ref, external_data)
+      subtotal_cents, fee_cents, discount_cents, total_cents, payment_method, change_for_cents, paid, paid_at, paid_method, created_by, external_provider, external_ref, external_data, customer_id)
     values (${a.storeId}, ${a.tenantId}, ${number}, ${a.channel}, ${a.type}, ${a.status ?? 'novo'}, ${a.customerName}, ${a.phone}, ${a.address}, ${a.zoneId}, ${a.table}, ${a.note},
       ${subtotal}, ${a.feeCents}, ${discount}, ${total}, ${a.payment}, ${a.changeForCents}, ${!!a.paid}, ${a.paid ? new Date().toISOString() : null}, ${a.paid ? (a.paidMethod ?? a.payment) : null}, ${a.createdBy},
-      ${a.external?.provider ?? null}, ${a.external?.ref ?? null}, ${a.external?.data === undefined ? null : JSON.stringify(a.external.data)}::jsonb)
+      ${a.external?.provider ?? null}, ${a.external?.ref ?? null}, ${a.external?.data === undefined ? null : JSON.stringify(a.external.data)}::jsonb, ${a.customerId ?? null})
     returning id, number, tracking_token, total_cents`;
   for (const l of a.lines) {
     await q`insert into order_items (order_id, store_id, tenant_id, product_id, name, qty, unit_cents, total_cents, note, addons, print_zone_id)
@@ -85,7 +86,8 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
     return withTenant(ctx.pools, store.tenantId, async (q) => {
       const [settings] = await q`select data from store_settings where store_id = ${store.storeId}`;
       const [theme] = await q`select data from store_themes where store_id = ${store.storeId}`;
-      return { name: store.name, status: store.status, open: getOpenStatus(settings?.data ?? {}), settings: settings?.data ?? {}, theme: theme?.data ?? {} };
+      const [land] = await q`select value from platform_public_settings where key = 'landing_url'`;
+      return { name: store.name, status: store.status, open: getOpenStatus(settings?.data ?? {}), settings: settings?.data ?? {}, theme: theme?.data ?? {}, platform: { landingUrl: land?.value ?? '' } };
     });
   });
 
@@ -106,6 +108,7 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
     }), req.body, reply); if (!b) return;
     const store = await resolveStore(ctx, slug);
     if (!store || store.status !== 'producao') return fail(reply, 404, 'not_found', 'Loja não encontrada ou ainda não está no ar.');
+    const customer = await loadCustomer(ctx, req, store);   // logado: o pedido entra no histórico dele
     const out = await withTenant(ctx.pools, store.tenantId, async (q) => {
       const [settings] = await q`select data from store_settings where store_id = ${store.storeId}`;
       const cfg = (settings?.data ?? {}) as Record<string, any>;
@@ -129,7 +132,8 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
       if (pay.type === 'cash' && b.changeFor !== undefined && toCents(b.changeFor) < total) return { ok: false as const, status: 422, code: 'invalid_change', message: 'O valor para troco é menor que o total.' };
       const o = await insertOrder(q, { storeId: store.storeId, tenantId: store.tenantId, channel: 'loja', type: b.type, lines: built.lines!, customerName: b.customerName, phone: b.phone,
         address: zone ? `${b.address} — ${zone.name}` : '', zoneId: zone?.id ?? null, feeCents: fee, table: null, note: b.note, payment: pay.name,
-        changeForCents: pay.type === 'cash' && b.changeFor !== undefined ? toCents(b.changeFor) : null, createdBy: null, status: pay.online ? 'aguardando' : 'novo' });
+        changeForCents: pay.type === 'cash' && b.changeFor !== undefined ? toCents(b.changeFor) : null, createdBy: null, status: pay.online ? 'aguardando' : 'novo', customerId: customer?.id ?? null });
+      if (customer) await q`update store_customers set name = case when name = '' then ${b.customerName} else name end, phone = case when phone = '' then ${b.phone} else phone end where id = ${customer.id}`;
       return { ok: true as const, o, online: pay.online ? { gateway: pay.gateway as 'mercadopago' | 'sicoob', method: (pay.type === 'credit' ? 'card' : 'pix') as 'pix' | 'card' } : null };
     });
     if (!out.ok) return fail(reply, out.status, out.code, out.message);

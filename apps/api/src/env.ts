@@ -17,6 +17,13 @@ const Env = z.object({
   PUBLIC_API_URL: z.string().url().optional(),
   // pasta com o build do apps/platform (tela do super admin)
   PLATFORM_UI_DIR: z.string().optional(),
+  // e-mail do código de acesso dos clientes (qualquer SMTP; ex.: o SMTP configurado no Supabase). Sem isso o login de clientes responde 503.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().default(587),
+  SMTP_SECURE: z.enum(['true', 'false']).default('false'),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  MAIL_FROM: z.string().default('Pediu Lanchou <nao-responda@pediulanchou.com.br>'),
 });
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env) {

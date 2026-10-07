@@ -8,6 +8,7 @@ import { billingRoutes } from './billing.js';
 import type { Ctx } from './context.js';
 import { fail } from './http.js';
 import { collectionRoutes } from './collections.js';
+import { customerRoutes } from './customers.js';
 import { ifoodRoutes } from './ifood.js';
 import { orderRoutes } from './orders.js';
 import { paymentRoutes } from './payments.js';
@@ -61,6 +62,7 @@ export function buildApp(ctx: Ctx, opts: { trustProxy?: boolean; logger?: boolea
   logRoutes(app, ctx);
   staffRoutes(app, ctx);
   orderRoutes(app, ctx);
+  customerRoutes(app, ctx);
   collectionRoutes(app, ctx);
   realtimeRoutes(app, ctx);
   uploadRoutes(app, ctx);

@@ -5,7 +5,7 @@ import Login from '@/pages/Login';
 import Overview from '@/pages/Overview';
 import { StoresList, StoreDetail } from '@/pages/Stores';
 import { Alerts, Audit, Health, Logs, Performance, Publications } from '@/pages/Monitoring';
-import { IfoodPlatform, McpTokens, Releases, Subscriptions } from '@/pages/Business';
+import { IfoodPlatform, McpTokens, Releases, StoreFooter, Subscriptions } from '@/pages/Business';
 
 function Gate() {
   const { me, ready } = useAuth();
@@ -18,7 +18,7 @@ function Gate() {
         <Route path="lojas" element={<StoresList />} /><Route path="lojas/:id" element={<StoreDetail />} />
         <Route path="publicacoes" element={<Publications />} /><Route path="desempenho" element={<Performance />} />
         <Route path="alertas" element={<Alerts />} /><Route path="saude" element={<Health />} /><Route path="logs" element={<Logs />} /><Route path="auditoria" element={<Audit />} />
-        <Route path="assinaturas" element={<Subscriptions />} /><Route path="versoes" element={<Releases />} /><Route path="ifood" element={<IfoodPlatform />} /><Route path="mcp" element={<McpTokens />} />
+        <Route path="assinaturas" element={<Subscriptions />} /><Route path="versoes" element={<Releases />} /><Route path="ifood" element={<IfoodPlatform />} /><Route path="rodape" element={<StoreFooter />} /><Route path="mcp" element={<McpTokens />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Bike, CheckCircle2, ChefHat, ClipboardCheck, ClipboardList, Clock, PackageCheck, QrCode, XCircle, type LucideIcon } from 'lucide-react';
 import { get } from '@/lib/api';
+import { useCustomer } from '@/lib/customer';
+import { DLink } from '@/lib/nav';
 import { brl } from '@/lib/format';
 import { cx } from '@/ui/kit';
 import { loadMyOrders } from './CheckoutModal';
@@ -16,21 +18,32 @@ const ago = (iso: string) => { const m = Math.max(0, Math.round((Date.now() - ne
 /** Acompanhamento: o cliente guarda só o token de cada pedido; o status vem do servidor (atualiza a cada 8 s enquanto houver pedido em andamento). */
 export default function OrdersPage() {
   const { slug } = useStore();
+  const { customer, ready } = useCustomer();
   const [orders, setOrders] = useState<(Tracked & { token: string })[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
+    // pedidos deste aparelho (token guardado no navegador) + pedidos da conta, quando o cliente está logado
     const mine = loadMyOrders(slug);
     const res = await Promise.all(mine.map(async (m) => { try { return { ...(await get<Tracked>(`/v1/track/${m.token}`)), token: m.token }; } catch { return null; } }));
-    setOrders(res.filter((x): x is Tracked & { token: string } => !!x)); setLoaded(true);
-  }, [slug]);
-  useEffect(() => { void load(); }, [load]);
+    const local = res.filter((x): x is Tracked & { token: string } => !!x);
+    let remote: (Tracked & { token: string })[] = [];
+    if (customer) { try { remote = (await get<{ orders: (Tracked & { token: string })[] }>(`/v1/store/${slug}/customer/orders`)).orders; } catch { /* mantém só os do aparelho */ } }
+    const seen = new Set(remote.map((o) => o.token));
+    setOrders([...remote, ...local.filter((o) => !seen.has(o.token))].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))); setLoaded(true);
+  }, [slug, customer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (ready) void load(); }, [load, ready]);
   const active = orders.some((o) => !['entregue', 'cancelado'].includes(o.status));
   useEffect(() => { if (!active) return; const t = setInterval(load, 8000); return () => clearInterval(t); }, [active, load]);
 
   return (
     <div className="mx-auto max-w-2xl px-3 pt-4 md:pt-8">
       <h1 className="mb-4 flex items-center gap-2 text-2xl font-bold"><ClipboardList size={24} /> Meus pedidos</h1>
+      {ready && !customer && (
+        <DLink to="/conta" className="mb-3 block rounded-t border border-t-border bg-t-card p-3 text-center text-sm text-t-muted-fg">
+          <b className="text-t-primary">Entre na sua conta</b> para ver todos os seus pedidos, em qualquer aparelho.
+        </DLink>
+      )}
       {loaded && orders.length === 0 && <p className="rounded-t border border-t-border bg-t-card p-6 text-center text-sm text-t-muted-fg">Você ainda não fez pedidos neste aparelho. Faça um pedido e acompanhe o status aqui.</p>}
       <div className="space-y-3">
         {orders.map((o) => {

@@ -5,6 +5,7 @@ import StoreLayout from '@/store/StoreLayout';
 import HomePage from '@/store/HomePage';
 import CategoryPage from '@/store/CategoryPage';
 import OrdersPage from '@/store/OrdersPage';
+import AccountPage from '@/store/AccountPage';
 import AboutPage from '@/store/AboutPage';
 import AdminLayout from '@/admin/AdminLayout';
 import Dashboard from '@/admin/Dashboard';
@@ -19,6 +20,7 @@ import PaymentsAdmin from '@/admin/PaymentsAdmin';
 import PrintAdmin from '@/admin/PrintAdmin';
 import StoreAdmin from '@/admin/StoreAdmin';
 import UsersAdmin from '@/admin/UsersAdmin';
+import CustomersAdmin from '@/admin/CustomersAdmin';
 import IfoodAdmin from '@/admin/IfoodAdmin';
 import DomainsAdmin from '@/admin/DomainsAdmin';
 import PdvApp from '@/apps/PdvApp';
@@ -41,6 +43,7 @@ export default function App() {
         <Route path="/painel" element={<RequirePerm perm="admin.dashboard"><AdminLayout /></RequirePerm>}>
           <Route index element={<PanelHome />} />
           <Route path="pedidos" element={<RequirePerm perm="admin.pedidos"><OrdersAdmin /></RequirePerm>} />
+          <Route path="clientes" element={<RequirePerm perm="admin.pedidos"><CustomersAdmin /></RequirePerm>} />
           <Route path="produtos" element={<RequirePerm perm="admin.cardapio"><ProductsAdmin /></RequirePerm>} />
           <Route path="categorias" element={<RequirePerm perm="admin.cardapio"><CategoriesAdmin /></RequirePerm>} />
           <Route path="adicionais" element={<RequirePerm perm="admin.cardapio"><AddonsAdmin /></RequirePerm>} />
@@ -59,6 +62,7 @@ export default function App() {
           <Route index element={<HomePage />} />
           <Route path="categoria/:id" element={<CategoryPage />} />
           <Route path="pedidos" element={<OrdersPage />} />
+          <Route path="conta" element={<AccountPage />} />
           <Route path="empresa" element={<AboutPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

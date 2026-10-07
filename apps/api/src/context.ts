@@ -12,6 +12,8 @@ export interface Ctx {
   /** URL pública da API (https), usada nos webhooks dos gateways. Vazio = sem webhook (só conciliação por consulta). */
   publicUrl?: string;
   cookieSecure: boolean;
+  /** Envio de e-mail (código de acesso do cliente). Ausente = login de clientes indisponível. */
+  mailer?: import('./mailer.js').Mailer;
   stripe?: import('./stripe.js').StripeClient;
   telemetry?: import('./telemetry.js').Telemetry;
   notifier?: import('./alerts.js').Notifier;

@@ -8,11 +8,13 @@ import { runDunning } from './billing.js';
 import { Telemetry } from './telemetry.js';
 import { systemClock, type Ctx } from './context.js';
 import { loadEnv } from './env.js';
+import { smtpMailer } from './mailer.js';
 
 const env = loadEnv();
 const pools = createPools({ app: env.APP_DATABASE_URL, platform: env.PLATFORM_DATABASE_URL, mcp: env.MCP_DATABASE_URL });
 const telemetry = new Telemetry(pools);
-const ctx: Ctx = { pools, ring: env.ring, clock: systemClock, baseDomain: env.BASE_DOMAIN, cookieSecure: env.cookieSecure, publicUrl: env.PUBLIC_API_URL, telemetry, notifier: env.ALERT_WEBHOOK_URL ? webhookNotifier(env.ALERT_WEBHOOK_URL) : undefined };
+const mailer = env.SMTP_HOST ? smtpMailer({ host: env.SMTP_HOST, port: env.SMTP_PORT, secure: env.SMTP_SECURE === 'true', user: env.SMTP_USER, pass: env.SMTP_PASS, from: env.MAIL_FROM }) : undefined;
+const ctx: Ctx = { pools, mailer, ring: env.ring, clock: systemClock, baseDomain: env.BASE_DOMAIN, cookieSecure: env.cookieSecure, publicUrl: env.PUBLIC_API_URL, telemetry, notifier: env.ALERT_WEBHOOK_URL ? webhookNotifier(env.ALERT_WEBHOOK_URL) : undefined };
 telemetry.start();
 const app = buildApp(ctx, { trustProxy: env.trustProxy, logger: true, platformUiDir: env.PLATFORM_UI_DIR });
 

@@ -1,3 +1,4 @@
+import { useCustomer } from '@/lib/customer';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bike, CheckCircle2, ClipboardList, Copy, CreditCard, ExternalLink, Loader2, Map, MapPin, MessageSquare, Phone, QrCode, Send, Store as StoreIcon, User } from 'lucide-react';
 import QRCode from 'qrcode';
@@ -24,6 +25,9 @@ export function CheckoutModal({ open, onClose }: { open: boolean; onClose: () =>
   const [zoneId, setZoneId] = useState(''); const [payId, setPayId] = useState(''); const [changeFor, setChangeFor] = useState('');
   const [note, setNote] = useState('');
   const [done, setDone] = useState<Created | null>(null);
+  const { customer } = useCustomer();
+  // cliente logado: nome, telefone e e-mail já vêm preenchidos (e o pedido entra no histórico da conta)
+  useEffect(() => { if (customer) { setName((n) => n || customer.name); setPhone((p) => p || customer.phone); setEmail((m) => m || customer.email); } }, [customer]);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
 
   const zones = menu.zones; const pays = menu.payments;

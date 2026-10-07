@@ -5,7 +5,8 @@ export interface Menu {
   categories: (Category & { image_url?: string })[]; products: Product[]; groups: (AddonGroup & { addons: Addon[] })[];
   banners: Banner[]; featured: string[]; zones: DeliveryZone[]; payments: PaymentMethod[];
 }
-export interface StoreCtx { slug: string; theme: Theme; store: Store; status: { open: boolean; label: string }; menu: Menu; reload: () => Promise<void> }
+/** landingUrl: link da landing page da plataforma (rodapé de todas as lojas); vem da configuração do super admin. */
+export interface StoreCtx { slug: string; theme: Theme; store: Store; status: { open: boolean; label: string }; menu: Menu; landingUrl: string; reload: () => Promise<void> }
 export const StoreContext = createContext<StoreCtx | null>(null);
 export const useStore = () => {
   const c = useContext(StoreContext);

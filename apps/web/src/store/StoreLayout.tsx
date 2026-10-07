@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, NavLink, useSearchParams } from 'react-router-dom';
-import { ClipboardList, Home, Info, ShoppingBag, X } from 'lucide-react';
+import { ClipboardList, Home, Info, ShoppingBag, User, X } from 'lucide-react';
 import { THEME_DEFAULTS, STORE_DEFAULTS, type Store, type Theme } from '@/lib/types';
 import { get } from '@/lib/api';
 import { applyTheme } from '@/lib/theme';
 import { CartProvider, useCart } from '@/lib/cart';
+import { CustomerProvider, useCustomer } from '@/lib/customer';
 import { storeSlug } from '@/lib/session';
 import { DLink } from '@/lib/nav';
 import { brl } from '@/lib/format';
@@ -14,7 +15,7 @@ import { CheckoutModal } from './CheckoutModal';
 import { Img } from './Img';
 import { cx } from '@/ui/kit';
 
-interface Loaded { theme: Theme; store: Store; status: { open: boolean; label: string }; menu: Menu }
+interface Loaded { theme: Theme; store: Store; status: { open: boolean; label: string }; menu: Menu; landingUrl: string }
 
 /** Loja pública: carrega dados e cardápio da API e atualiza a cada 60 s (e ao voltar para a aba), para preço/disponibilidade nunca ficarem velhos. */
 export default function StoreLayout() {
@@ -29,7 +30,7 @@ export default function StoreLayout() {
       const [info, menu] = await Promise.all([get<any>(`/v1/store/${slug}`), get<any>(`/v1/store/${slug}/menu`)]);
       const cfg = info.settings ?? {};
       const store: Store = { ...STORE_DEFAULTS, ...cfg, name: info.name, hours: cfg.hours ?? [] };
-      setData({ theme: { ...THEME_DEFAULTS, ...(info.theme ?? {}) }, store, status: { open: !!info.open?.open, label: info.open?.label ?? '' }, menu: normalizeMenu(menu) });
+      setData({ theme: { ...THEME_DEFAULTS, ...(info.theme ?? {}) }, store, status: { open: !!info.open?.open, label: info.open?.label ?? '' }, menu: normalizeMenu(menu), landingUrl: info.platform?.landingUrl ?? '' });
       setError(null);
     } catch (e) { setError((e as Error).message); }
   }, [slug]);
@@ -51,6 +52,7 @@ export default function StoreLayout() {
 
   return (
     <StoreContext.Provider value={value}>
+      <CustomerProvider slug={slug}>
       <CartProvider>
         <div className="min-h-screen bg-t-bg font-t text-t-fg" style={theme.backgroundImageUrl ? { backgroundImage: `url(${theme.backgroundImageUrl})`, backgroundSize: 'cover', backgroundAttachment: 'fixed' } : undefined}>
           {preview && <div className="bg-amber-500/90 px-3 py-1 text-center text-[11px] font-semibold text-black">Pré-visualização</div>}
@@ -61,6 +63,7 @@ export default function StoreLayout() {
           <CartDrawer />
         </div>
       </CartProvider>
+      </CustomerProvider>
     </StoreContext.Provider>
   );
 }
@@ -68,6 +71,8 @@ export default function StoreLayout() {
 function Header() {
   const { theme, store } = useStoreCtx();
   const cart = useCart();
+  const { customer } = useCustomer();
+  const account = customer ? (customer.name.split(' ')[0] || 'Minha conta') : 'Entrar';
   const link = ({ isActive }: { isActive: boolean }) => cx('rounded-full px-3 py-1.5 text-sm font-medium transition', isActive ? 'bg-t-primary text-t-primary-fg' : 'text-t-fg hover:bg-t-muted');
   return (
     <header className="sticky top-0 z-40 hidden border-b border-t-border bg-t-card/95 backdrop-blur md:block">
@@ -79,6 +84,7 @@ function Header() {
         <nav className="flex items-center gap-1">
           <NavLink end to="/" className={link}><span className="flex items-center gap-1.5"><Home size={15} />Início</span></NavLink>
           <NavLink to="/pedidos" className={link}><span className="flex items-center gap-1.5"><ClipboardList size={15} />Meus pedidos</span></NavLink>
+          <NavLink to="/conta" className={link}><span className="flex items-center gap-1.5"><User size={15} />{account}</span></NavLink>
           <NavLink to="/empresa" className={link}><span className="flex items-center gap-1.5"><Info size={15} />Sobre</span></NavLink>
           <button onClick={() => cart.setOpen(true)} className="ml-2 flex items-center gap-2 rounded-full bg-t-primary px-4 py-2 text-sm font-semibold text-t-primary-fg lg:hidden">
             <ShoppingBag size={16} /> {cart.count > 0 ? `${cart.count} · ${brl(cart.subtotal)}` : 'Sacola'}
@@ -90,18 +96,25 @@ function Header() {
 }
 
 function Footer() {
-  const { theme, store } = useStoreCtx();
+  const { theme, store, landingUrl } = useStoreCtx();
+  // só http(s): o link vem de configuração; qualquer outro esquema cai no site padrão
+  const lp = /^https?:\/\//i.test(landingUrl) ? landingUrl : 'https://pediulanchou.com.br';
   return (
-    <footer className="hidden border-t border-t-border bg-t-card py-6 text-center text-xs text-t-muted-fg md:block">
+    <footer className="border-t border-t-border bg-t-card px-4 pb-24 pt-6 text-center text-xs text-t-muted-fg md:pb-6">
       <div className="font-semibold text-t-fg">{store.name}</div>
       <div>{[store.address, store.city && `${store.city}/${store.state}`, store.phone].filter(Boolean).join(' · ')}</div>
       <div className="mt-1">© {new Date().getFullYear()} {theme.footerText}</div>
+      <a href={lp} target="_blank" rel="noopener noreferrer" className="mx-auto mt-4 flex w-fit flex-col items-center gap-1.5 opacity-90 transition hover:opacity-100" aria-label="Desenvolvido com muita fome — Pediu Lanchou">
+        <span>Desenvolvido com muita fome</span>
+        <span className="rounded-md bg-white px-2.5 py-1.5 shadow-sm"><img src="/brand/logo-allblack.png" alt="Pediu Lanchou" className="h-5 w-auto" /></span>
+      </a>
     </footer>
   );
 }
 
 function BottomNav() {
   const cart = useCart();
+  const { customer } = useCustomer();
   const item = ({ isActive }: { isActive: boolean }) => cx('flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium', isActive ? 'opacity-100' : 'opacity-70');
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-t-border bg-t-primary text-t-primary-fg md:hidden">
@@ -115,7 +128,7 @@ function BottomNav() {
           </button>
         </div>
         <NavLink to="/empresa" className={item}><Info size={20} />Sobre</NavLink>
-        <span className="flex-1" />
+        <NavLink to="/conta" className={item}><User size={20} />{customer ? 'Conta' : 'Entrar'}</NavLink>
       </div>
     </nav>
   );
