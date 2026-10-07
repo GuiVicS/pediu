@@ -1,6 +1,6 @@
 # Hospedar o Pediu no Portainer — passo a passo
 
-> Continuidade em 2026-10-07: consulte também [`../HANDOFF.md`](../HANDOFF.md). O guia abaixo foi recuperado do ambiente local e descreve a configuração anterior. Agora existem **nove migrations** (veja a lista na seção 3). O login de clientes por e-mail exige `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` e `MAIL_FROM`; o compose Portainer atual já repassa essas variáveis e as do agente de IA (`ANTHROPIC_API_KEY`, `TRANSCRIBE_*`). Sem SMTP, a solicitação de código retorna 503. As instruções de infraestrutura deste guia não foram revalidadas nesta passagem.
+> Continuidade em 2026-10-07: consulte também [`../HANDOFF.md`](../HANDOFF.md). O guia abaixo foi recuperado do ambiente local e descreve a configuração anterior. Agora existem **dez migrations** (veja a lista na seção 3). O login de clientes por e-mail exige `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` e `MAIL_FROM`; o compose Portainer atual já repassa essas variáveis e as do agente de IA (`ANTHROPIC_API_KEY`, `TRANSCRIBE_*`). Sem SMTP, a solicitação de código retorna 503. As instruções de infraestrutura deste guia não foram revalidadas nesta passagem.
 
 Guia para colocar a plataforma Pediu (`https://github.com/GuiVicS/pediu`) no ar em uma VPS, gerenciada pelo Portainer.
 Baseado no que foi validado localmente (stack `pediu-local`) e no compose/Caddyfile do repositório (`deploy/`).
@@ -61,7 +61,7 @@ Domínios próprios de cada loja (ex.: `www.minhaloja.com.br`) apontam com A/CNA
 ## 3. Banco (Supabase)
 
 1. Crie o projeto novo no Supabase. Anote o **project ref**.
-2. Aplique **todas as migrations** da pasta, **em ordem** (hoje são 9; a lista completa e comentada está em [`GUIA-DIDATICO.md`](GUIA-DIDATICO.md), Parte 7.3). Use o SQL Editor do Supabase (ou `supabase db push` com a CLI). As cinco primeiras:
+2. Aplique **todas as migrations** da pasta, **em ordem** (hoje são 10; a lista completa e comentada está em [`GUIA-DIDATICO.md`](GUIA-DIDATICO.md), Parte 7.3). Use o SQL Editor do Supabase (ou `supabase db push` com a CLI). As cinco primeiras:
    ```
    packages/db/supabase/migrations/20261007000001_core.sql
    packages/db/supabase/migrations/20261007000002_catalog.sql
@@ -73,6 +73,7 @@ Domínios próprios de cada loja (ex.: `www.minhaloja.com.br`) apontam com A/CNA
    packages/db/supabase/migrations/20261011000001_store_features.sql
    packages/db/supabase/migrations/20261011000002_extension_pairing.sql
    packages/db/supabase/migrations/20261011000003_extension_features.sql
+   packages/db/supabase/migrations/20261012000001_coupons.sql
    ```
    Elas criam os roles `app_api`, `platform_api` e `mcp_agent` **sem senha**.
 3. Defina uma senha forte para cada role (SQL Editor):

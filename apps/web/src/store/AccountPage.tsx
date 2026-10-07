@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, ClipboardList, KeyRound, Loader2, LogOut, Mail, Phone, User } from 'lucide-react';
-import { ApiError, post, put } from '@/lib/api';
+import { ArrowLeft, ClipboardList, KeyRound, Loader2, LogOut, Mail, Phone, Ticket, User } from 'lucide-react';
+import { ApiError, get, post, put } from '@/lib/api';
+import { brl } from '@/lib/format';
 import { useCustomer, type Customer } from '@/lib/customer';
 import { DLink } from '@/lib/nav';
 import { Field } from '@/ui/kit';
@@ -66,6 +67,30 @@ function SignIn() {
   );
 }
 
+interface MyCoupon { code: string; description: string; kind: 'percent' | 'fixed'; percent: number | null; amount_cents: number | null; max_discount_cents: number | null; min_order_cents: number; ends_at: string | null }
+
+/** Cupons exclusivos do cliente: é só digitar o código no checkout. */
+function MyCoupons() {
+  const { slug } = useStore();
+  const [list, setList] = useState<MyCoupon[]>([]); const [copied, setCopied] = useState<string | null>(null);
+  useEffect(() => { get<{ coupons: MyCoupon[] }>(`/v1/store/${slug}/customer/coupons`).then((r) => setList(r.coupons)).catch(() => setList([])); }, [slug]);
+  if (!list.length) return null;
+  return (
+    <div className="space-y-2 rounded-t border border-t-border bg-t-card p-5">
+      <h2 className="flex items-center gap-2 font-bold"><Ticket size={18} /> Meus cupons</h2>
+      {list.map((c) => (
+        <div key={c.code} className="flex items-center justify-between gap-3 rounded-lg bg-t-muted px-3 py-2 text-sm">
+          <div className="min-w-0">
+            <div className="font-bold">{c.kind === 'percent' ? `${c.percent}% de desconto` : `${brl((c.amount_cents ?? 0) / 100)} de desconto`}{c.max_discount_cents ? ` (até ${brl(c.max_discount_cents / 100)})` : ''}</div>
+            <div className="truncate text-xs text-t-muted-fg">{c.description || 'Cupom exclusivo'}{c.min_order_cents ? ` · pedido mínimo ${brl(c.min_order_cents / 100)}` : ''}{c.ends_at ? ` · até ${new Date(c.ends_at).toLocaleDateString('pt-BR')}` : ''}</div>
+          </div>
+          <button type="button" className="t-btn-ghost shrink-0 font-mono" onClick={() => { void navigator.clipboard?.writeText(c.code); setCopied(c.code); setTimeout(() => setCopied(null), 1500); }}>{copied === c.code ? 'Copiado' : c.code}</button>
+        </div>))}
+      <p className="text-xs text-t-muted-fg">Digite o código em “Cupom de desconto” ao finalizar o pedido.</p>
+    </div>
+  );
+}
+
 function Profile({ customer }: { customer: Customer }) {
   const { slug } = useStore();
   const { setCustomer, logout } = useCustomer();
@@ -83,10 +108,12 @@ function Profile({ customer }: { customer: Customer }) {
         <p className="text-sm text-t-muted-fg">{customer.email}</p>
         <DLink to="/pedidos" className="t-btn mt-4 w-full"><ClipboardList size={16} /> Meus pedidos</DLink>
       </div>
+      <MyCoupons />
       <form className="space-y-3 rounded-t border border-t-border bg-t-card p-5" onSubmit={(e) => { e.preventDefault(); if (name.trim().length >= 2 && !busy) void save(); }}>
         <h2 className="font-bold">Meus dados</h2>
         <Field label="Nome" icon={User}><input className="t-input" value={name} autoComplete="name" onChange={(e) => setName(e.target.value)} /></Field>
-        <Field label="Telefone / WhatsApp" icon={Phone}><input className="t-input" value={phone} inputMode="tel" autoComplete="tel" onChange={(e) => setPhone(e.target.value)} /></Field>
+        <Field label="Telefone / WhatsApp (contato do pedido)" icon={Phone}><input className="t-input" value={phone} inputMode="tel" autoComplete="tel" onChange={(e) => setPhone(e.target.value)} /></Field>
+        {!phone.trim() && <p className="text-xs text-t-muted-fg">Informe seu telefone para a loja poder falar com você sobre o pedido. O acesso à conta continua pelo código enviado ao seu e-mail.</p>}
         {msg && <p className="text-sm text-t-muted-fg" role="status">{msg}</p>}
         <button className="t-btn w-full" disabled={name.trim().length < 2 || busy}>{busy ? <Loader2 size={16} className="animate-spin" /> : null} Salvar</button>
       </form>

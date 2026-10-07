@@ -11,13 +11,15 @@ Atualizado em 2026-10-07. Este arquivo é o ponto de entrada para continuar em o
 
 ## Estado atual e pendências (2026-10-07)
 
-**Implementado e testado por testes automáticos** (API 74, extensão 18, shared 27, edge 3, SQL de isolamento incl. `rls_whatsapp.sql`):
-clientes por e-mail e histórico; rodapé configurável; checklist de funcionalidades por loja (super admin); pareamento da extensão com a sessão do lojista; catálogo/orçamento/consulta de pedido para o agente; respostas rápidas; agente de IA (Claude) com ferramentas, áudio (Whisper) e imagem; rascunho de pedido com link; modo automático/assistido com pausa por humano; disparos com ritmo e envio incerto nunca repetido; pré-visualização da loja em desenvolvimento para a equipe; PWA por tela (vitrine, painel, PDV, garçom, entregador) e do super admin; guias HTML responsivos com modo escuro.
+**Implementado e testado por testes automáticos** (API 82, extensão 18, shared 27, edge 3, SQL de isolamento incl. `rls_whatsapp.sql`):
+clientes por e-mail e histórico; rodapé configurável; checklist de funcionalidades por loja (super admin); pareamento da extensão com a sessão do lojista; catálogo/orçamento/consulta de pedido para o agente; respostas rápidas; agente de IA (Claude) com ferramentas, áudio (Whisper) e imagem; rascunho de pedido com link; **cupons de desconto** (migration `20261012000001_coupons.sql`, `apps/api/src/coupons.ts`, `/painel/cupons`, campo no checkout, “Meus cupons” na conta); modo automático/assistido com pausa por humano; disparos com ritmo e envio incerto nunca repetido; pré-visualização da loja em desenvolvimento para a equipe; PWA por tela (vitrine, painel, PDV, garçom, entregador) e do super admin; guias HTML responsivos com modo escuro.
 
-**Pendências que dependem de decisão do dono do produto**
-1. **Login do cliente por telefone** (pedido original; hoje é código por e-mail). Decidir canal (SMS? WhatsApp? custo) e fluxo.
-2. **Cupons/resgate** (pedido original). Decidir validade, limites, desconto, vínculo à conta, regras de uso.
-3. Repositório separado do guia: a integração do GitHub destas sessões não cria repositórios (erro 403). O dono cria um repositório privado vazio e sobe a pasta `pediulanchou-guia` (ou o anexa à sessão).
+**Decisões do dono do produto (2026-10-07)**
+- **Login do cliente:** manter **só e-mail**; telefone fica como contato do pedido (a conta pede o telefone). Reabrir só se pedirem SMS/WhatsApp.
+- **Cupons:** implementar todas as regras, configuráveis por loja — **feito** (ver abaixo).
+
+**Pendências que dependem de decisão/ação do dono**
+1. Repositório separado do guia: a integração do GitHub destas sessões não cria repositórios (erro 403). O dono cria um repositório privado vazio e sobe a pasta `pediulanchou-guia` (ou o anexa à sessão).
 
 **Pendências de validação real (exigem ambiente, conta ou hardware)** — lista detalhada em `docs/TESTES.md`, seção 10:
 WhatsApp Web real + WA-JS 4.6.1 (o usuário relatou erro vindo de `wppconnect-wa.js`/`wrapModuleFunction`; faltou a mensagem do erro e a versão do WhatsApp Web); chamadas reais à Anthropic e ao Whisper; disparos reais; PWA em Android/iPhone; preview e telas no navegador; migrations (9) em banco real/Portainer; SMTP real; impressora física e agente de impressão no Windows (sem instalador nem início automático documentado/validado).
@@ -97,7 +99,7 @@ Rotas da equipe: `GET /v1/staff/customers`, `GET /v1/staff/customers/:id/orders`
 - Cupons/resgate **não implementados nesta entrega**. Definir validade, limites, aplicação de desconto, vínculo à conta e regras de uso.
 - SMTP necessário: `SMTP_HOST`, `SMTP_PORT` (587 por padrão), `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`. Sem SMTP, solicitação de código responde 503.
 - `deploy/docker-compose.portainer.yml` já repassa as variáveis SMTP e as do agente (feito em 2026-10-07).
-- Confirmar aplicação das **9 migrations** no banco local e no de produção; as passagens deste trabalho não alteraram bancos nem reiniciaram a stack.
+- Confirmar aplicação das **10 migrations** no banco local e no de produção; as passagens deste trabalho não alteraram bancos nem reiniciaram a stack.
 - Validar entrega real de e-mail e navegação visual no navegador, incluindo identidade da loja, logo, rodapé e responsividade.
 
 ## Extensão Chrome/WhatsApp
@@ -162,7 +164,7 @@ Operação do ambiente local (somente nessa máquina): entrar em `C:\Users\thnka
 ## Ordem recomendada de continuidade
 
 1. Decidir login por telefone e cupons (ver “Estado atual e pendências”) e implementar.
-2. Mergear o PR, aplicar as **9 migrations** (lista na Parte 7.3 do guia) em banco dedicado, configurar SMTP e as chaves do agente/Whisper e atualizar a Stack (`docs/PORTAINER-DEPLOY.md`).
+2. Mergear o PR, aplicar as **10 migrations** (lista na Parte 7.3 do guia) em banco dedicado, configurar SMTP e as chaves do agente/Whisper e atualizar a Stack (`docs/PORTAINER-DEPLOY.md`).
 3. Rodar a validação real da lista de `docs/TESTES.md` seção 10, começando pelo WhatsApp Web com conta de teste (e investigar o erro do WA-JS com a mensagem completa).
 4. Instalador do agente de impressão para Windows (início automático) e validação com impressora física.
 5. Manter `docs/GUIA-DIDATICO.md` e o HTML atualizados.
@@ -248,3 +250,7 @@ Adicionada a **Parte 12** em `docs/GUIA-DIDATICO.md`: ficha do cliente, platafor
 
 ### Guias responsivos com tema da plataforma e modo escuro (2026-10-07)
 `docs/GUIA-DIDATICO.html` e o assistente `docs/index.html` agora usam as variáveis do tema da plataforma (`apps/platform/src/platform-theme.css`: azul primário, fonte Inter, raios grandes, sombras), com botão claro/escuro (chave `pediu-ui-theme`, a mesma do painel; sem preferência salva segue o sistema), layout responsivo (índice vira gaveta no celular, tabelas e fluxogramas rolam na horizontal, sem estouro de largura em 360 px), barra de progresso, voltar ao topo e impressão sempre em claro. Fluxogramas Mermaid são embutidos como SVG nos dois temas. O assistente teve o passo das migrations corrigido para as 9 atuais; o restante do texto do assistente continua o original (pode estar desatualizado em outras partes). Os HTML são **gerados** pelos scripts do repositório separado do guia (`tools/build-html.mjs`, `tools/patch-assistente.mjs`, `tools/tema.mjs`; ver a pasta `pediulanchou-guia`, ainda não publicada como repositório): ao mudar o `.md`, rode o build lá e copie o HTML para `docs/`. Verificado por capturas no Chromium (computador, tablet e celular; claro e escuro) e checagem de rolagem horizontal; não testado em Safari/iPhone reais.
+
+
+### Cupons de desconto (2026-10-07)
+Decisão do dono: todas as regras, customizáveis por loja. Implementado: tabelas `coupons`, `coupon_customers`, `coupon_redemptions` e `orders.coupon_code` (migration `20261012000001_coupons.sql`, **10ª migration**), gatilho que devolve o uso quando o pedido é cancelado; `apps/api/src/coupons.ts` (`evaluateCoupon`/`redeemCoupon`; a validação roda dentro da transação do pedido com `for update`, então limites não estouram com pedidos simultâneos); rotas `POST /v1/store/:slug/coupons/validate` (limite de 20/min), `GET /v1/store/:slug/customer/coupons`, `GET/POST/PUT/DELETE /v1/staff/coupons`, `GET/PUT /v1/staff/coupons/:id/customers` (perfil `admin.loja`); tela `apps/web/src/admin/CouponsAdmin.tsx`, campo “Cupom de desconto” no checkout e “Meus cupons” na conta. Regras: código por loja, porcentagem (com teto) ou valor fixo, pedido mínimo, janela de datas, limite total e por cliente (por conta e por telefone — últimos 8 dígitos), público geral ou clientes escolhidos (exige login). O desconto vale só sobre os itens (nunca a entrega) e nunca passa dos itens; cupom já usado não é apagado (desativar). Validado: `coupons.test.ts` 8 casos, `rls_coupons.sql`. **Não validado:** telas no navegador; se o cupom de impressora e as telas de pedido exibem o desconto; combinação com pagamento online real. Guia, Portainer e assistente já listam as **10** migrations.

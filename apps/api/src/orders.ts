@@ -14,6 +14,7 @@ import { gatewayConfigured, startOnlinePayment } from './payments.js';
 import { GatewayError } from './gateways.js';
 import { loadStaff, resolveStore, staffGuard } from './staff.js';
 import { loadCustomer } from './customers.js';
+import { evaluateCoupon, redeemCoupon } from './coupons.js';
 
 const uuid = z.string().uuid();
 const selection = z.array(z.object({ groupId: uuid, addonIds: z.array(uuid).max(30) })).max(20).default([]);
@@ -114,7 +115,7 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
       type: z.enum(['delivery', 'retirada']), customerName: z.string().trim().min(2).max(80), phone: z.string().trim().min(8).max(20),
       address: z.string().trim().max(200).default(''), zoneId: uuid.optional(), paymentId: uuid, note: z.string().max(300).default(''),
       changeFor: z.number().min(0).max(10000).optional(), email: z.string().email().max(120).optional(), document: z.string().regex(/^\d{11}$|^\d{14}$/, 'CPF ou CNPJ só com números').optional(),
-      lines: z.array(lineIn).min(1).max(60),
+      lines: z.array(lineIn).min(1).max(60), couponCode: z.string().trim().max(30).optional(),
     }), req.body, reply); if (!b) return;
     const store = await resolveStore(ctx, slug);
     if (!store || store.status !== 'producao') return fail(reply, 404, 'not_found', 'Loja não encontrada ou ainda não está no ar. Pedidos só são aceitos depois que a loja for publicada.');
@@ -138,11 +139,19 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
         if (!z) return { ok: false as const, status: 422, code: 'invalid_zone', message: 'Escolha uma região de entrega válida.' };
         fee = toCents(Number(z.fee)); zone = { id: z.id, name: z.name };
       }
-      const total = subtotal + fee;
+      // cupom: validado e travado aqui (limites não estouram com pedidos simultâneos); o desconto vale só sobre os itens
+      let coupon: Extract<Awaited<ReturnType<typeof evaluateCoupon>>, { ok: true }> | null = null;
+      if (b.couponCode) {
+        const r = await evaluateCoupon(ctx, q, store.storeId, { code: b.couponCode, subtotalCents: subtotal, customerId: customer?.id ?? null, phone: b.phone, lock: true });
+        if (!r.ok) return { ok: false as const, status: 422, code: 'coupon_invalid', message: r.error };
+        coupon = r;
+      }
+      const total = subtotal + fee - (coupon?.discountCents ?? 0);
       if (pay.type === 'cash' && b.changeFor !== undefined && toCents(b.changeFor) < total) return { ok: false as const, status: 422, code: 'invalid_change', message: 'O valor para troco é menor que o total.' };
       const o = await insertOrder(q, { storeId: store.storeId, tenantId: store.tenantId, channel: 'loja', type: b.type, lines: built.lines!, customerName: b.customerName, phone: b.phone,
         address: zone ? `${b.address} — ${zone.name}` : '', zoneId: zone?.id ?? null, feeCents: fee, table: null, note: b.note, payment: pay.name,
-        changeForCents: pay.type === 'cash' && b.changeFor !== undefined ? toCents(b.changeFor) : null, createdBy: null, status: pay.online ? 'aguardando' : 'novo', customerId: customer?.id ?? null });
+        changeForCents: pay.type === 'cash' && b.changeFor !== undefined ? toCents(b.changeFor) : null, createdBy: null, status: pay.online ? 'aguardando' : 'novo', customerId: customer?.id ?? null, discountCents: coupon?.discountCents });
+      if (coupon) await redeemCoupon(q, { couponId: coupon.couponId, storeId: store.storeId, tenantId: store.tenantId, orderId: o.id, code: coupon.code, customerId: customer?.id ?? null, phone: b.phone, discountCents: coupon.discountCents });
       if (customer) await q`update store_customers set name = case when name = '' then ${b.customerName} else name end, phone = case when phone = '' then ${b.phone} else phone end where id = ${customer.id}`;
       return { ok: true as const, o, online: pay.online ? { gateway: pay.gateway as 'mercadopago' | 'sicoob', method: (pay.type === 'credit' ? 'card' : 'pix') as 'pix' | 'card' } : null };
     });

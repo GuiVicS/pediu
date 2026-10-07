@@ -1,6 +1,6 @@
 import { useCustomer } from '@/lib/customer';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bike, CheckCircle2, ClipboardList, Copy, CreditCard, ExternalLink, Loader2, Map, MapPin, MessageSquare, Phone, QrCode, Send, Store as StoreIcon, User } from 'lucide-react';
+import { Bike, CheckCircle2, ClipboardList, Copy, CreditCard, ExternalLink, Loader2, Map, MapPin, MessageSquare, Phone, QrCode, Send, Store as StoreIcon, Ticket, User, X } from 'lucide-react';
 import QRCode from 'qrcode';
 import { ApiError, get, post } from '@/lib/api';
 import { useCart } from '@/lib/cart';
@@ -30,13 +30,29 @@ export function CheckoutModal({ open, onClose }: { open: boolean; onClose: () =>
   useEffect(() => { if (customer) { setName((n) => n || customer.name); setPhone((p) => p || customer.phone); setEmail((m) => m || customer.email); } }, [customer]);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
 
+  const [couponInput, setCouponInput] = useState(''); const [applied, setApplied] = useState<{ code: string; discountCents: number; description: string } | null>(null);
+  const [couponMsg, setCouponMsg] = useState<string | null>(null); const [couponBusy, setCouponBusy] = useState(false);
+  useEffect(() => { setApplied(null); setCouponMsg(null); }, [cart.subtotal]);
   const zones = menu.zones; const pays = menu.payments;
   const zone = zones.find((z) => z.id === (zoneId || zones[0]?.id));
   const pay = pays.find((p) => p.id === (payId || pays[0]?.id));
   const fee = type === 'delivery' ? zone?.fee ?? 0 : 0;
-  const total = cart.subtotal + fee;
+  const discount = applied ? applied.discountCents / 100 : 0;
+  const total = cart.subtotal + fee - discount;
   const needsDoc = !!pay?.online && pay.gateway === 'sicoob';
   const valid = name.trim().length >= 2 && onlyDigits(phone).length >= 8 && (type === 'retirada' || (address.trim() && zone)) && pay && (!needsDoc || [11, 14].includes(onlyDigits(document).length));
+
+  const orderLines = () => cart.lines.map((l) => ({ productId: l.productId, qty: l.qty, note: l.note, addons: Object.values(l.addons.reduce<Record<string, { groupId: string; addonIds: string[] }>>((acc, a) => { (acc[a.groupId] ??= { groupId: a.groupId, addonIds: [] }).addonIds.push(a.addonId); return acc; }, {})) }));
+
+  // cupom: o servidor valida de verdade no pedido; aqui só mostramos o desconto antes de enviar
+  async function applyCoupon() {
+    if (!couponInput.trim()) return;
+    setCouponBusy(true); setCouponMsg(null);
+    try {
+      const r = await post<{ code: string; discountCents: number; description: string }>(`/v1/store/${slug}/coupons/validate`, { code: couponInput.trim(), phone: onlyDigits(phone), lines: orderLines() });
+      setApplied(r); setCouponInput('');
+    } catch (e) { setApplied(null); setCouponMsg(e instanceof ApiError ? e.message : 'Não foi possível validar o cupom.'); } finally { setCouponBusy(false); }
+  }
 
   async function submit() {
     if (!pay) return;
@@ -46,7 +62,7 @@ export function CheckoutModal({ open, onClose }: { open: boolean; onClose: () =>
         type, customerName: name.trim(), phone: onlyDigits(phone), address: type === 'delivery' ? address.trim() : '', zoneId: type === 'delivery' ? zone?.id : undefined,
         paymentId: pay.id, note: note.trim(), changeFor: pay.type === 'cash' && changeFor ? Number(changeFor.replace(',', '.')) : undefined,
         email: email.trim() || undefined, document: onlyDigits(document) || undefined,
-        lines: cart.lines.map((l) => ({ productId: l.productId, qty: l.qty, note: l.note, addons: Object.values(l.addons.reduce<Record<string, { groupId: string; addonIds: string[] }>>((acc, a) => { (acc[a.groupId] ??= { groupId: a.groupId, addonIds: [] }).addonIds.push(a.addonId); return acc; }, {})) })),
+        lines: orderLines(), couponCode: applied?.code,
       });
       const mine = loadMyOrders(slug); localStorage.setItem(myOrdersKey(slug), JSON.stringify([{ token: r.trackingToken, number: r.number, at: Date.now() }, ...mine].slice(0, 30)));
       cart.clear(); setDone(r);
@@ -98,9 +114,20 @@ export function CheckoutModal({ open, onClose }: { open: boolean; onClose: () =>
         {pay?.type === 'cash' && <Field label="Troco para quanto? (opcional)" icon={CreditCard}><input className="t-input" inputMode="decimal" value={changeFor} onChange={(e) => setChangeFor(e.target.value)} placeholder="Ex.: 100" /></Field>}
         {pay?.online && <Field label="E-mail (opcional, para o comprovante)" icon={User}><input className="t-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>}
         {needsDoc && <Field label="CPF ou CNPJ do pagador" icon={User}><input className="t-input" inputMode="numeric" value={document} onChange={(e) => setDocument(e.target.value)} /></Field>}
+        <Field label="Cupom de desconto" icon={Ticket}>
+          {applied ? (
+            <div className="flex items-center justify-between rounded-lg bg-t-muted px-3 py-2 text-sm"><span><b>{applied.code}</b>{applied.description ? ` · ${applied.description}` : ''}</span>
+              <button type="button" aria-label="Remover cupom" onClick={() => { setApplied(null); setCouponMsg(null); }}><X size={16} /></button></div>
+          ) : (
+            <div className="flex gap-2"><input className="t-input" value={couponInput} placeholder="Tem um cupom? Digite o código" autoCapitalize="characters" onChange={(e) => setCouponInput(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void applyCoupon(); } }} />
+              <button type="button" className="t-btn-ghost shrink-0" disabled={couponBusy || !couponInput.trim()} onClick={() => void applyCoupon()}>{couponBusy ? <Loader2 size={16} className="animate-spin" /> : 'Aplicar'}</button></div>
+          )}
+          {couponMsg && <p className="mt-1 text-xs text-t-danger">{couponMsg}</p>}
+        </Field>
         <Field label="Observações" icon={MessageSquare}><textarea className="t-input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
         <div className="space-y-1 rounded-lg bg-t-muted p-3 text-sm">
           <div className="flex justify-between"><span>Subtotal</span><span>{brl(cart.subtotal)}</span></div>
+          {applied && <div className="flex justify-between text-t-accent"><span className="flex items-center gap-1.5"><Ticket size={14} /> Cupom {applied.code}</span><span>− {brl(discount)}</span></div>}
           <div className="flex justify-between"><span className="flex items-center gap-1.5"><Bike size={14} /> Taxa de entrega</span><span>{brl(fee)}</span></div>
           <div className="flex justify-between border-t border-t-border pt-1 font-bold"><span>Total</span><span>{brl(total)}</span></div>
           <p className="pt-1 text-[11px] text-t-muted-fg">O valor final é confirmado pela loja ao enviar.</p>

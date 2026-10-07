@@ -23,6 +23,7 @@ import { extensionRoutes } from './extension.js';
 import { extensionStoreRoutes } from './extensionStore.js';
 import { agentRoutes } from './agent.js';
 import { broadcastRoutes } from './broadcasts.js';
+import { couponRoutes } from './coupons.js';
 import { featureRoutes, storeRoutes } from './stores.js';
 
 export function buildApp(ctx: Ctx, opts: { trustProxy?: boolean; logger?: boolean; platformUiDir?: string } = {}) {
@@ -64,6 +65,7 @@ export function buildApp(ctx: Ctx, opts: { trustProxy?: boolean; logger?: boolea
   extensionStoreRoutes(app, ctx);
   agentRoutes(app, ctx);
   broadcastRoutes(app, ctx);
+  couponRoutes(app, ctx);
   billingRoutes(app, ctx);
   analyticsRoutes(app, ctx);
   staffDashboardRoutes(app, ctx);

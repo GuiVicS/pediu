@@ -22,6 +22,7 @@ import StoreAdmin from '@/admin/StoreAdmin';
 import UsersAdmin from '@/admin/UsersAdmin';
 import CustomersAdmin from '@/admin/CustomersAdmin';
 import WhatsappAdmin from '@/admin/WhatsappAdmin';
+import CouponsAdmin from '@/admin/CouponsAdmin';
 import IfoodAdmin from '@/admin/IfoodAdmin';
 import DomainsAdmin from '@/admin/DomainsAdmin';
 import PdvApp from '@/apps/PdvApp';
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/painel" element={<RequirePerm perm="admin.dashboard"><AdminLayout /></RequirePerm>}>
           <Route index element={<PanelHome />} />
           <Route path="pedidos" element={<RequirePerm perm="admin.pedidos"><OrdersAdmin /></RequirePerm>} />
+          <Route path="cupons" element={<RequirePerm perm="admin.loja"><CouponsAdmin /></RequirePerm>} />
           <Route path="whatsapp" element={<RequirePerm perm="admin.pedidos"><WhatsappAdmin /></RequirePerm>} />
           <Route path="clientes" element={<RequirePerm perm="admin.pedidos"><CustomersAdmin /></RequirePerm>} />
           <Route path="produtos" element={<RequirePerm perm="admin.cardapio"><ProductsAdmin /></RequirePerm>} />

@@ -159,7 +159,7 @@ Stripe ──(webhook assinado)──▶ API ──▶ assinaturas e régua de c
   ${warn('Use sempre o pooler em modo transação (6543) na aplicação. O código já usa <code class="i">prepare: false</code>, que esse modo exige. A conexão direta (5432) só serve para aplicar migrations.')}` },
 
  { g:'Instalação', t:'Aplicar as migrations', html: () => `
-  <p class="lead">As <b>nove migrations</b> criam tabelas, roles e políticas RLS. Aplique todas, <b>em ordem</b>, num banco dedicado ao PediuLanchou (nunca no Supabase de outro sistema). Veja a lista comentada na Parte 7.3 do guia didático.</p>
+  <p class="lead">As <b>dez migrations</b> criam tabelas, roles e políticas RLS. Aplique todas, <b>em ordem</b>, num banco dedicado ao PediuLanchou (nunca no Supabase de outro sistema). Veja a lista comentada na Parte 7.3 do guia didático.</p>
   <h3>Opção A — Supabase CLI</h3>
   ${cmd(`cd packages/db
 supabase link --project-ref SEU_REF
@@ -174,7 +174,8 @@ packages/db/supabase/migrations/20261009000001_ops_print_pay_ifood.sql
 packages/db/supabase/migrations/20261010000001_customers.sql
 packages/db/supabase/migrations/20261011000001_store_features.sql
 packages/db/supabase/migrations/20261011000002_extension_pairing.sql
-packages/db/supabase/migrations/20261011000003_extension_features.sql`)}
+packages/db/supabase/migrations/20261011000003_extension_features.sql
+packages/db/supabase/migrations/20261012000001_coupons.sql`)}
   <h3>Defina as senhas dos 3 roles</h3>
   <p>As migrations criam os roles <b>sem senha</b> (segredo nunca fica no repositório). Escolha 3 senhas fortes e diferentes:</p>
   ${cmd(`alter role app_api      with password 'SENHA_FORTE_1';

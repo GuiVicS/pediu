@@ -106,3 +106,12 @@ Legenda como acima. Os `[auto]` já existem e passam (`apps/api/test/whatsapp.te
 - [ ] [manual] **Preview**: com a loja em `desenvolvimento`, entrar como equipe e abrir a vitrine (faixa amarela, checkout desativado); sem login e com a equipe de outra loja deve dar "não encontrada"; depois de publicar, a faixa some.
 - [ ] [real] **PWA** em Android (Chrome) e iPhone (Safari): instalar a vitrine, o painel, `/garcom`, `/entregador`, `/pdv` e o super admin; cada um abre direto na própria tela, em tela cheia; ícone da marca; reinstalar depois de atualizar; sessão vencida volta ao login.
 - [ ] [manual] **Responsividade e modo escuro** dos guias (`docs/GUIA-DIDATICO.html` e `docs/index.html`) em Safari/iPhone e em telas pequenas.
+
+## 11. Cupons de desconto (adicionado em 2026-10-07)
+Automatizado: `apps/api/test/coupons.test.ts` (regras, limites, corrida, cancelamento, exclusivos, isolamento) e `packages/db/supabase/tests/rls_coupons.sql`. Falta, no navegador:
+
+- [ ] [manual] Criar cupom em **Painel → Cupons** (porcentagem com teto, valor fixo, mínimo, datas, limites) e conferir a lista (usos e desconto dado).
+- [ ] [manual] **Checkout**: aplicar o código, ver a linha "Cupom X −R$", total correto; trocar o carrinho zera o cupom; cupom inválido mostra a mensagem do servidor; pedido sai com o total com desconto (e o pagamento online cobra esse total).
+- [ ] [manual] **Cupom exclusivo**: escolher clientes, entrar na conta como um deles e ver em **Conta → Meus cupons**; como outro cliente e sem login o cupom é recusado.
+- [ ] [manual] **Cancelar** um pedido com cupom e conferir que o uso voltou (o cupom esgotado volta a valer).
+- [ ] [manual] Impressão/cupom de papel e telas de pedido mostram o desconto (ainda não verificado se o cupom de impressora lista o desconto).

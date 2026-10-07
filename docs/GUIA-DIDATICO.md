@@ -59,6 +59,7 @@ Leia esta tabela uma vez; volte quando um termo aparecer.
 | **Pedido** | Segue o fluxo: `aguardando` (pagamento online pendente) → `novo` → `preparo` → `pronto` → `saiu` (só entrega) → `entregue`; pode ser `cancelado` até antes de entregar. |
 | **Canal** | De onde o pedido veio: `loja` (vitrine), `pdv`, `garcom`, `ifood`. |
 | **Zona de entrega** | Região atendida com taxa e tempo estimado. |
+| **Cupom de desconto** | Código que o cliente digita no checkout (ex.: `BEMVINDO10`) para pagar menos. Não confundir com o **cupom de impressora** (o papel que sai na cozinha). |
 | **Zona de impressão** | Setor que recebe o cupom (Cozinha, Bar, Caixa). Cada categoria do cardápio aponta para uma zona. |
 | **Cortesia** | Publicar uma loja sem assinatura, com motivo registrado (parceiro, piloto). |
 | **Trial** | Período de teste gratuito de uma assinatura. |
@@ -297,12 +298,22 @@ Entrar em `https://SUALOJA/entrar` com e-mail e senha da equipe. O botão **Ver 
 | **Atendimento WhatsApp** | Conectar a extensão, respostas rápidas, disparos (aparece conforme a liberação) |
 | **Produtos / Categorias / Adicionais / Destaques** | Cardápio completo (veja abaixo) |
 | **Aparência / Banners** | Cores, logo, banners da vitrine |
+| **Cupons** | Descontos por código: porcentagem ou valor fixo, validade, limites e cupons exclusivos de clientes escolhidos (perfis admin e gerente) |
 | **Pagamentos** | Formas de pagamento e gateways (Mercado Pago, Sicoob) |
 | **Loja e entrega** | Dados do estabelecimento, horários, pedido mínimo, regiões e taxas de entrega |
 | **Impressão** | Zonas, impressoras, parear o agente do caixa |
 | **iFood** | Integração do iFood da loja |
 | **Domínios** | Domínio próprio do cliente |
 | **Usuários** | Equipe e perfis |
+
+**Criando um cupom de desconto** (menu *Cupons*)
+
+1. *Novo cupom* → **código** (ex.: `BEMVINDO10`) e descrição que o cliente vê.
+2. **Tipo:** porcentagem (com **desconto máximo** opcional) ou valor fixo em reais.
+3. Regras opcionais: **pedido mínimo** (sobre os itens), **começa/termina em**, **máximo de usos no total** e **por cliente**.
+4. **Quem pode usar:** qualquer cliente que saiba o código, ou **só clientes escolhidos** (depois de salvar, botão *Clientes*; o cupom aparece na conta deles e exige login).
+5. O desconto vale **só sobre os itens**, nunca sobre a taxa de entrega, e nunca passa do valor dos itens. **Pedido cancelado devolve o uso** do cupom. O limite por cliente vale por conta **e** por telefone (trocar de e-mail não burla).
+6. Cupom que já foi usado **não pode ser apagado**: desative-o (o histórico fica). O painel mostra usos e total de desconto dado.
 
 **Montando o cardápio (ordem recomendada)**
 
@@ -327,7 +338,7 @@ Entrar em `https://SUALOJA/entrar` com e-mail e senha da equipe. O botão **Ver 
 
 ### 6.4 Cliente
 
-Vitrine → itens → carrinho → checkout (nome, telefone, endereço/região, pagamento). Acompanha em **Meus pedidos**. Com **Conta** (`/conta`) entra por **código de 6 dígitos enviado ao e-mail** (vale 10 min) e vê histórico. Login por telefone e cupons **ainda não existem**.
+Vitrine → itens → carrinho → checkout (nome, telefone, endereço/região, pagamento). Acompanha em **Meus pedidos**. Com **Conta** (`/conta`) entra por **código de 6 dígitos enviado ao e-mail** (vale 10 min) e vê histórico. No checkout há o campo **Cupom de desconto**; cupons exclusivos do cliente aparecem em **Conta → Meus cupons**. O acesso à conta é **só por e-mail** (decisão do produto: o telefone é apenas contato do pedido).
 
 ### 6.5 Atendimento pelo WhatsApp (extensão) ⚠️
 
@@ -393,6 +404,7 @@ Pasta `packages/db/supabase/migrations/`. No Supabase: SQL Editor → colar cada
 | 7 | `20261011000001_store_features.sql` | Checklist de funcionalidades por loja |
 | 8 | `20261011000002_extension_pairing.sql` | Pareamento da extensão do WhatsApp |
 | 9 | `20261011000003_extension_features.sql` | Respostas rápidas, agente, rascunhos, disparos |
+| 10 | `20261012000001_coupons.sql` | Cupons de desconto, usos e clientes escolhidos |
 
 Regras de ouro: **nunca editar uma migration já aplicada** (crie uma nova com data/ordem maior); **nunca aplicar no Supabase de outro sistema**; migrations novas devem ser aplicadas **antes** de subir o código que depende delas.
 
@@ -548,8 +560,8 @@ Separadas entre o que já foi **pedido pelo dono do produto** e o que é **ideia
 
 | Item | Observação |
 |---|---|
-| Login do cliente por **telefone** | Hoje é código por e-mail. Precisa escolher o canal (SMS ou WhatsApp) e custo |
-| **Cupons** e resgate | Definir validade, limites, vínculo à conta |
+| ~~Login do cliente por telefone~~ | **Decidido: manter só e-mail**; o telefone fica como contato do pedido. Reabrir se o negócio pedir SMS/WhatsApp (custo e canal) |
+| ~~Cupons e resgate~~ | **Feito** (falta validar no navegador): código no checkout, porcentagem/valor fixo, validade, limites total e por cliente, mínimo, cupons exclusivos na conta do cliente |
 | ~~Visualizar loja em desenvolvimento~~ | **Feito** (falta validar no navegador): a equipe logada da própria loja vê a vitrine em rascunho com a faixa "MODO DESENVOLVIMENTO" e o botão "Ver loja" marca "rascunho"; pedidos seguem bloqueados. Falta, se quiserem, link de prévia para o *cliente do lojista* ver sem login |
 | **PWA** (vitrine, painel, PDV, garçom, entregador e super admin) | **Feito no código** (cada tela instala como app próprio; super admin também); falta validar instalação e atualização em Android/iPhone reais |
 | Validação real da extensão do WhatsApp | Conta de teste, áudio/imagem reais, chaves de IA, qualidade do prompt |
@@ -635,6 +647,7 @@ Entre em `https://SLUG.pediulanchou.com.br/entrar` com o administrador.
 - [ ] **Adicionais**: grupos com mínimo/máximo/obrigatório/forma de cobrar, e as opções.
 - [ ] **Produtos**: nome, descrição, preço, foto, categoria, grupos de adicionais. Conferir ortografia e preços **com o dono do restaurante**.
 - [ ] **Destaques**: escolher os campeões de venda.
+- [ ] **Cupons** (opcional): criar o cupom de boas-vindas combinado com o dono (ex.: `BEMVINDO10`, 10%, 1 uso por cliente) e **testar no checkout** da vitrine.
 - [ ] **Pagamentos**: ativar Pix, dinheiro, cartão na entrega. Para pagamento **online**, conectar o gateway (12.7).
 - [ ] **Usuários (equipe)**: criar uma conta por pessoa **com o perfil certo** (Parte 3): gerente, suporte, balcão, garçom, entregador. **Nunca** compartilhar a conta do administrador.
 - [ ] **Conferir a vitrine em rascunho:** painel → **Ver loja** (a loja ainda está em `desenvolvimento`, então só você, logado, vê). Percorra as categorias, abra produtos com adicionais e confira preços e fotos no celular.
@@ -757,7 +770,7 @@ Faça **como se fosse um cliente de verdade**, com a equipe acompanhando:
 
 - [ ] **D+1:** ligar para o cliente: imprimiu tudo? Algum garçom sem conseguir entrar? Algum erro nos *Logs*/*Alertas* do super admin?
 - [ ] **D+7:** revisar pedidos cancelados e reclamações; ajustar tempos, taxas e fotos; conferir se há usuários desnecessários.
-- [ ] **D+30:** revisar uso (pedidos, ticket médio), sugerir melhorias (banners, destaques, cupons quando existirem) e registrar o que o cliente pediu.
+- [ ] **D+30:** revisar uso (pedidos, ticket médio), sugerir melhorias (banners, destaques, cupons de reativação) e registrar o que o cliente pediu.
 - [ ] Guardar a **ficha 12.0** e as decisões do cliente no registro de atendimento.
 
 ### 12.13 Se algo falhar durante a instalação
