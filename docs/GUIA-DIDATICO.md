@@ -11,6 +11,7 @@ Material para quem acabou de entrar na equipe e **não precisa ter conhecimento 
 | Usar o painel (cadastrar produto, ver pedidos, atender no WhatsApp) | Partes 1, 2, 3, 4 e 5 |
 | Cuidar do servidor (Portainer, domínios, e-mail, chaves) | Partes 1, 2, 6, 7 e 9 |
 | Mexer no código | Partes 1, 2, 3, 8 e 9 |
+| **Instalar um cliente novo** (impressora, celulares de garçom, domínio) | **Parte 12** (checklist) |
 | Só entender o produto e as próximas ideias | Partes 1, 2 e 10 |
 
 Tudo que está marcado com ✅ **está implementado e testado por testes automáticos**. Tudo marcado com ⚠️ **existe no código mas ainda não foi validado no mundo real** (por exemplo, com o WhatsApp de verdade). Não prometa a um cliente algo marcado com ⚠️ sem testar antes.
@@ -561,6 +562,8 @@ Separadas entre o que já foi **pedido pelo dono do produto** e o que é **ideia
 | Pedido | Criar pedido direto da conversa (com confirmação do cliente e idempotência) em vez de só rascunho |
 | Operação | Notificação push para o lojista; relatórios exportáveis; controle de estoque; impressão de etiqueta |
 | Marketing | Segmentação de clientes, campanhas agendadas, programa de fidelidade |
+| Celulares (PWA) | Atalhos próprios para `/garcom`, `/entregador` e `/pdv` (hoje o app instalado abre na vitrine), sessão mais longa para a equipe em dispositivo dedicado, aviso quando a sessão está prestes a expirar |
+| Impressão | Instalador do agente (`.exe`/serviço do Windows que inicia sozinho) em vez de Node.js + linha de comando |
 | Segurança | Renovação de credencial da extensão sem reconectar; auditoria visível ao lojista; 2FA para o lojista |
 | Plataforma | Painel de custos de IA por loja; limites por plano ligados ao checklist de funcionalidades; CI automático (GitHub Actions) rodando `check` e testes em cada PR |
 | Documentação | Vídeos curtos por papel; versão em PDF; este guia espelhado dentro do próprio painel |
@@ -570,7 +573,7 @@ Separadas entre o que já foi **pedido pelo dono do produto** e o que é **ideia
 ## Parte 11 — Primeiros passos do novo membro
 
 **Dia 1**
-- [ ] Ler as Partes 1 e 2 deste guia; abrir `docs/index.html`.
+- [ ] Ler as Partes 1 e 2 deste guia; abrir `docs/index.html`; dar uma olhada na Parte 12 (checklist de instalação).
 - [ ] Pedir acesso: GitHub (repositório), Portainer, Supabase, super admin (com autenticador).
 - [ ] Entrar na loja de testes pelo painel e navegar em todos os menus.
 - [ ] Fazer um pedido de teste na vitrine e acompanhá-lo até "entregue".
@@ -585,6 +588,188 @@ Separadas entre o que já foi **pedido pelo dono do produto** e o que é **ideia
 - [ ] Conectar a extensão do WhatsApp em uma loja de teste com um número de teste.
 - [ ] Fazer uma pequena melhoria de código seguindo a receita 8.3, com PR revisado.
 - [ ] Atualizar este guia com o que você achou confuso — ele existe para você e para o próximo.
+
+## Parte 12 — Checklist de instalação de um novo cliente
+
+Use esta lista **do primeiro contato até o dia da inauguração**. Imprima ou copie para o chamado do cliente e vá marcando (`- [x]`). Ela serve para qualquer pessoa da equipe, sem precisar saber programar. Itens com ⚠️ dependem de algo que ainda não foi validado em campo ou de um comportamento com limitação — leia a observação.
+
+**Tempo realista:** 1 a 2 dias úteis de preparação + 1 visita (ou chamada de vídeo) de 2 a 4 horas para impressora, celulares e treinamento.
+
+### 12.0 Ficha do cliente (preencha antes de começar)
+
+| Dado | Resposta |
+|---|---|
+| Nome fantasia / razão social | |
+| Responsável e telefone | |
+| Endereço, cidade, UF e telefone da loja | |
+| Slug desejado (ex.: `burger-lab`) → endereço `burger-lab.pediulanchou.com.br` | |
+| Domínio próprio (opcional): ex.: `pedidos.minhaloja.com.br` — quem controla o DNS? | |
+| Logo (PNG, fundo transparente) e cores da marca | |
+| Cardápio (planilha ou PDF) com **fotos**, preços, adicionais (borda, ponto da carne...) | |
+| Horário de funcionamento por dia | |
+| Pedido mínimo | |
+| Regiões de entrega, **taxa** e tempo de cada uma | |
+| Formas de pagamento (Pix, dinheiro, cartão na entrega, Pix/cartão online) | |
+| Quantas **impressoras**, modelo de cada uma e onde ficam (cozinha, bar, caixa) | |
+| Quantos **celulares** de garçom e de entregador (marca/modelo, Android ou iPhone) | |
+| Haverá **PDV/caixa**? Em computador ou tablet? | |
+| Wi-Fi do salão: nome e senha; cobre cozinha e salão? | |
+| Usa iFood? Quer atendimento por WhatsApp com IA? | |
+| Quem é o administrador (e-mail que será o login)? | |
+
+### 12.1 Preparação na plataforma (super admin) — 15 min
+
+- [ ] **Criar a loja**: super admin → Lojas → *Nova loja* (nome, slug, nome da conta). Ela nasce em `desenvolvimento`.
+- [ ] **Criar o administrador da loja**: abrir a loja → *Administrador* → nome, e-mail, senha (mín. 10). Anote e entregue a senha por canal seguro; peça para trocar depois.
+- [ ] **Assinatura ou cortesia**: confirmar a assinatura da conta (ou decidir o motivo de cortesia para o piloto).
+- [ ] **Funcionalidades**: se contratou WhatsApp/IA, marcar em *Funcionalidades disponíveis* (Parte 6.1, receita 4).
+- [ ] (Opcional) **Cardápio por IA**: gerar token do MCP e pedir à IA para montar a loja em rascunho a partir do cardápio do cliente; **conferir tudo** depois. A IA nunca publica.
+
+### 12.2 Dados da loja (painel do lojista) — 1 a 2 h
+
+Entre em `https://SLUG.pediulanchou.com.br/entrar` com o administrador.
+
+- [ ] **Loja e entrega**: endereço, telefone, **horários**, pedido mínimo, tempo de preparo, e as **regiões de entrega** com taxa e tempo.
+- [ ] **Aparência** e **Banners**: logo, cores, banners de promoção.
+- [ ] **Categorias**: criar e, em cada uma, escolher a **zona de impressão** (Cozinha, Bar...). Categoria sem zona imprime na zona padrão.
+- [ ] **Adicionais**: grupos com mínimo/máximo/obrigatório/forma de cobrar, e as opções.
+- [ ] **Produtos**: nome, descrição, preço, foto, categoria, grupos de adicionais. Conferir ortografia e preços **com o dono do restaurante**.
+- [ ] **Destaques**: escolher os campeões de venda.
+- [ ] **Pagamentos**: ativar Pix, dinheiro, cartão na entrega. Para pagamento **online**, conectar o gateway (12.7).
+- [ ] **Usuários (equipe)**: criar uma conta por pessoa **com o perfil certo** (Parte 3): gerente, suporte, balcão, garçom, entregador. **Nunca** compartilhar a conta do administrador.
+- [ ] **Domínio próprio** (se houver): painel → Domínios → adicionar → pedir ao responsável do DNS para criar o **CNAME** e o **TXT** mostrados → *Verificar* (Parte 6.2).
+
+### 12.3 Impressoras de cupom (cozinha, bar, caixa)
+
+**Antes da visita — o que levar/confirmar**
+- [ ] Impressora **térmica ESC/POS** (ex.: Elgin i9, Epson TM-T20, Bematech MP-4200). Impressora comum de papel A4 **não serve**.
+- [ ] **Papel** (bobina 58 mm ou 80 mm) reserva e, se a impressora tiver, cabo de **rede (RJ-45)**; senão USB.
+- [ ] Um **computador sempre ligado** no local (o "caixa") com internet, onde ficará o agente de impressão. Windows, Linux ou Mac.
+- [ ] Saber como a impressora se conecta: **Rede** (IP:9100), **Windows compartilhada** (USB no PC) ou **CUPS** (Linux/Mac).
+
+**Preparar a impressora fisicamente**
+- [ ] Colocar o papel, ligar, e imprimir o **autoteste** da própria impressora (geralmente segurando o botão Feed ao ligar). Ele costuma mostrar o **IP** (impressora de rede) e a largura do papel.
+- [ ] Se for de rede: fixar um **IP fixo** para ela (no roteador, "reserva de DHCP", ou na própria impressora) — senão o endereço muda e para de imprimir.
+- [ ] Se for USB no Windows: instalar o driver do fabricante e **compartilhar** a impressora (Propriedades → Compartilhamento). Anote o **nome do compartilhamento** (sem espaços é melhor).
+
+**Instalar o agente de impressão no computador do caixa** ⚠️
+> O agente é um programa em Node.js. Hoje não há instalador pronto: ele é gerado a partir do código. Peça a alguém da equipe técnica para gerar o arquivo `agent.mjs` (`npm run agent:build` → `apps/print-agent/dist/agent.mjs`) e levar no pen drive.
+- [ ] Instalar o **Node.js 20 ou superior** no computador do caixa.
+- [ ] Copiar `agent.mjs` para uma pasta fixa (ex.: `C:\PediuAgente`).
+- [ ] No painel: **Impressão → Parear agente** → copiar o código de 6 dígitos (vale 10 min).
+- [ ] No computador do caixa, na pasta do agente: `node agent.mjs pair --url https://SLUG.pediulanchou.com.br --code 123456 --name "Caixa"`.
+- [ ] Iniciar: `node agent.mjs run`. No painel o agente deve aparecer **online**. Deixe a janela aberta.
+- [ ] **Iniciar junto com o Windows** ⚠️: não há instruções oficiais no repositório; uma opção é criar uma tarefa no *Agendador de Tarefas* ("Ao fazer logon", executar `node C:\PediuAgente\agent.mjs run`) e **testar reiniciando o computador**. Documente o método que funcionar e atualize este guia.
+
+**Configurar no painel (Impressão)**
+- [ ] **Zonas**: criar (Cozinha, Bar, Caixa/Expedição). A zona do caixa pode marcar *Mostrar preços e total* (a da cozinha **não** mostra preços).
+- [ ] **Impressoras**: *Nova impressora* → nome, **Conexão** (Rede/Windows/CUPS), **Agente** (o computador pareado), endereço (`192.168.0.50:9100`, nome do compartilhamento ou fila CUPS), **Papel** (58/80 mm), colunas (32/48), **Acentos** (CP860 padrão), cortar papel, abrir gaveta.
+- [ ] **Ligar zona ↔ impressora**; marcar uma **principal** e, se houver, uma **reserva** (entra sozinha se a principal falhar 3 vezes ou o agente cair).
+- [ ] **Imprimir teste** em cada impressora. Conferir: cortou? acentos certos (ç, ã, é)? colunas sem quebrar? Se os acentos saírem trocados, mude para CP850 ou CP437 e teste de novo.
+- [ ] Conferir que **toda categoria tem zona** e que **toda zona tem impressora** (o painel avisa em amarelo "Sem impressora").
+- [ ] Fazer um **pedido de teste** pela vitrine e ver sair o cupom certo em cada zona; testar **Reimprimir**.
+- [ ] **Plano B**: mostrar ao cliente onde clicar em *Reimprimir* e como ver o pedido na tela se a impressora falhar.
+
+### 12.4 Celulares dos garçons e entregadores (PWA)
+
+PWA = o site instalado como aplicativo na tela inicial do celular. Cada pessoa usa **o próprio login** (perfil `garcom` ou `entregador`).
+
+**Requisitos**
+- [ ] **Android:** Chrome atualizado. **iPhone:** Safari (no iOS, instalar só funciona pelo Safari).
+- [ ] Wi-Fi do salão com **sinal em todo o salão**, inclusive varanda e fundos. Teste caminhando com o celular.
+- [ ] Bateria: carregador/powerbank no turno. Desligar a **economia de bateria agressiva** para o navegador (ela pode "matar" o app em segundo plano).
+- [ ] Volume do celular ligado (avisos sonoros) e **não incomodar** desativado durante o turno.
+
+**Instalação (por celular)**
+- [ ] Abrir `https://SLUG.pediulanchou.com.br/entrar` e **entrar com o e-mail e a senha da pessoa**.
+- [ ] Garçom: confirmar que abre a tela de mesas (`/garcom`). Entregador: tela de entregas (`/entregador`).
+- [ ] **Android:** menu do Chrome (⋮) → **Instalar app** (ou *Adicionar à tela inicial*) → confirmar.
+- [ ] **iPhone:** botão **Compartilhar** → **Adicionar à Tela de Início** → *Adicionar*.
+- [ ] Abrir o ícone novo na tela inicial e conferir que o app abre em tela cheia.
+- [ ] Renomear o ícone se quiser ("Garçom Burger Lab").
+
+⚠️ **Limitações conhecidas — explique ao cliente**
+- O app instalado abre **na vitrine da loja** (o atalho aponta para a página inicial). O garçom precisa entrar pelo login e ir para a tela de mesas; **se a sessão estiver ativa**, entra direto. Melhoria planejada: atalho próprio para `/garcom` e `/entregador` (Parte 10).
+- A **sessão da equipe dura 12 horas e expira após 2 horas sem uso**. No começo do turno, abra o app e confirme que está logado; se pedir login, entre de novo. Não é defeito.
+- Sem internet o app **não** lança pedidos: depende do Wi-Fi.
+- Cada pessoa com a **própria conta**: não compartilhe login (o histórico mostra quem fez cada ação).
+
+**Teste com o garçom**
+- [ ] Lançar um pedido numa mesa de teste, ver chegar na cozinha (tela e impressão), adicionar um item depois e conferir que **só o item novo** imprime.
+- [ ] Entregador: pegar um pedido de entrega de teste (*pronto → saiu → entregue*).
+- [ ] Mostrar como **trocar de usuário** (sair) ao passar o celular para outra pessoa.
+
+### 12.5 Caixa / PDV e telas da cozinha
+
+- [ ] No computador ou tablet do caixa, abrir `/pdv` com um usuário `balcao` (ou superior). Instalar como app (Chrome → Instalar) se quiser.
+- [ ] Gerente/suporte abrem `/painel/pedidos` numa tela fixa da cozinha para acompanhar os pedidos (o painel emite **aviso sonoro** de pedido novo; confirme no teste que o som toca — o navegador pode exigir **um clique na página** antes de liberar o áudio, então faça esse clique no começo do turno).
+- [ ] Testar: lançar pedido no PDV, receber em dinheiro/Pix, imprimir.
+- [ ] Opcional: instalar o **painel como app** (botão *Instalar painel como app* no menu lateral).
+
+### 12.6 Domínio, HTTPS e QR code
+
+- [ ] Abrir `https://SLUG.pediulanchou.com.br` num celular com 4G (fora do Wi-Fi da loja): carrega, mostra o cadeado, o logo e o cardápio?
+- [ ] Domínio próprio: *Verificar* deu certo? A página abre no domínio do cliente com cadeado? (O certificado é emitido no **primeiro acesso**; pode levar alguns segundos.)
+- [ ] Gerar **QR code** do endereço da loja (qualquer gerador) e entregar ao cliente para balcão, mesas e redes sociais.
+- [ ] Instalar a vitrine como app no celular do dono para ele ver como o cliente vê.
+
+### 12.7 Pagamentos online (se contratado)
+
+- [ ] Conectar o gateway em **Pagamentos** (Mercado Pago ou Sicoob) com as credenciais **do cliente** (nunca as nossas).
+- [ ] Fazer uma **cobrança real de valor baixo** (ex.: R$ 1,00), pagar, e ver o pedido sair de *aguardando* para *novo* sozinho. Depois estornar/conciliar.
+- [ ] Conferir que o servidor tem `PUBLIC_API_URL` configurado (os avisos automáticos do gateway dependem disso — Parte 7.4).
+- [ ] Explicar ao cliente: pedido com pagamento online só aparece para a cozinha **depois** do pagamento confirmado.
+
+### 12.8 E-mail e conta do cliente
+
+- [ ] Pedir um código de login em `/conta` da vitrine com um e-mail de teste e **confirmar que o e-mail chega** (confira a caixa de spam). Se der erro 503, falta configurar o SMTP no servidor (Parte 7.4).
+
+### 12.9 iFood e WhatsApp (opcionais)
+
+- [ ] **iFood:** painel → iFood → informar credenciais; fazer um pedido de teste vindo do iFood e conferir a impressão.
+- [ ] **WhatsApp (⚠️ validar com número de teste antes do cliente):** liberar no super admin (12.1), instalar a extensão no Chrome do computador do atendimento, **conectar** com o código, cadastrar as **respostas rápidas** (horário, cardápio, entrega, pagamento) e começar com o agente em **modo Assistido**. Só ative o **Automático** depois de dias de uso assistido. Explique o risco de limitação do número no WhatsApp (Parte 6.5).
+
+### 12.10 Teste ponta a ponta (ensaio geral)
+
+Faça **como se fosse um cliente de verdade**, com a equipe acompanhando:
+
+- [ ] Cliente abre a vitrine no celular, monta um pedido de **delivery** com adicionais e finaliza.
+- [ ] O pedido aparece no painel, **imprime na cozinha** (sem preços) e **no caixa** (com total).
+- [ ] Mudar para *preparo → pronto → saiu → entregue* acompanhando no celular do cliente (**Meus pedidos**).
+- [ ] Repetir com **retirada** e com **mesa** (garçom).
+- [ ] **Cancelar** um pedido com motivo e ver o aviso/cupom de cancelamento.
+- [ ] Testar **loja fechada**: fora do horário o cliente deve ver "fechado" e não conseguir finalizar.
+- [ ] Testar um item **indisponível** (desligar "Disponível" no produto) e voltar.
+- [ ] **Desligar a impressora principal** e ver a reserva assumir (se houver reserva) — ou ver o aviso no painel.
+- [ ] **Queda de internet**: tirar o computador do caixa da rede por 1 minuto e reconectar; o agente deve voltar sozinho.
+
+### 12.11 Entrada no ar (go-live)
+
+- [ ] Todos os itens acima marcados e o dono **aprovou o cardápio e os preços** por escrito (mensagem basta).
+- [ ] Super admin → loja → **Publicar** (pede o autenticador; assinatura ativa ou motivo de cortesia).
+- [ ] Anotar os **números dos pedidos de teste** e avisar o cliente para ignorá-los (não há tela para apagar pedidos; eles ficam no histórico e nos relatórios).
+- [ ] **Treinamento (≈ 1 h)** com dono, caixa, cozinha, garçons e entregadores: tela de pedidos, mudar status, reimprimir, cancelar, esgotar item, o que fazer se cair a internet, a quem ligar.
+- [ ] Entregar ao cliente por canal seguro: login do administrador, contatos de suporte, este checklist preenchido e um resumo "se a impressora parar".
+- [ ] Combinar o **plantão** do primeiro fim de semana (alguém da equipe disponível).
+
+### 12.12 Depois da instalação
+
+- [ ] **D+1:** ligar para o cliente: imprimiu tudo? Algum garçom sem conseguir entrar? Algum erro nos *Logs*/*Alertas* do super admin?
+- [ ] **D+7:** revisar pedidos cancelados e reclamações; ajustar tempos, taxas e fotos; conferir se há usuários desnecessários.
+- [ ] **D+30:** revisar uso (pedidos, ticket médio), sugerir melhorias (banners, destaques, cupons quando existirem) e registrar o que o cliente pediu.
+- [ ] Guardar a **ficha 12.0** e as decisões do cliente no registro de atendimento.
+
+### 12.13 Se algo falhar durante a instalação
+
+| Problema | O que fazer |
+|---|---|
+| Agente não fica online | Computador sem internet? Janela do agente fechada? Código de pareamento vencido (10 min)? Gerar outro e parear de novo |
+| Impressora não imprime | Mesmo roteador? IP mudou? Compartilhamento com nome exato? Testar `node agent.mjs test --connection rede --address 192.168.0.50:9100` |
+| Acentos trocados | Mudar *Acentos* para CP850/CP437 e *Imprimir teste* |
+| Garçom não consegue entrar | Perfil errado? Senha trocada? 5 tentativas erradas bloqueiam por 15 min (aguarde ou peça ao admin para redefinir a senha) |
+| App do garçom abriu a vitrine | Esperado (limitação 12.4): ir em Entrar → mesas |
+| Domínio próprio sem HTTPS | DNS ainda não propagou ou *Verificar* não passou; aguardar e tentar de novo (Parte 9) |
+| Cliente não recebe e-mail do código | SMTP não configurado (Parte 7.4) |
 
 ## Onde está cada documento
 
