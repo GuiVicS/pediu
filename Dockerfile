@@ -5,7 +5,7 @@
 
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages ./packages
 COPY apps ./apps
 # tsx (devDependency) executa o TypeScript direto; as telas precisam de vite/tailwind no build
