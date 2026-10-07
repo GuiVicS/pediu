@@ -16,6 +16,7 @@ export default function Login() {
   const act = useAction();
   useApplyPlatformTheme();
   const banners = useBanners('login');
+  const hasBanners = !!banners && banners.length > 0;   // enquanto carrega ou sem banner cadastrado: só o formulário
   const slug = storeSlug();
   if (me) {
     const next = params.get('next') ?? '';
@@ -23,7 +24,7 @@ export default function Login() {
     return <Navigate to={perm && can(me.role, perm) ? next : HOME[me.role]} replace />;
   }
   return (
-    <div className="grid min-h-screen bg-background font-brand text-foreground lg:grid-cols-2">
+    <div className={`grid min-h-screen bg-background font-brand text-foreground ${hasBanners ? 'lg:grid-cols-2' : ''}`}>
       <div className="flex items-center justify-center px-4 py-10">
         <form onSubmit={(e) => { e.preventDefault(); void act.run(() => login(email.trim(), password)); }} className="card w-full max-w-sm space-y-4 p-6">
           <div className="flex items-center justify-between"><img src="/brand/logo.png" alt="PediuLanchou" className="h-9 w-auto dark:hidden" /><img src="/brand/logo-white.png" alt="PediuLanchou" className="hidden h-9 w-auto dark:block" /><ThemeToggle /></div>
@@ -35,15 +36,12 @@ export default function Login() {
           <p className="text-center text-[11px] text-muted-foreground">5 erros bloqueiam o acesso por 15 minutos.</p>
         </form>
       </div>
-      {/* metade da direita: só em telas grandes; sem banners cadastrados mostra a marca */}
-      <aside className="relative hidden lg:block" aria-label="Novidades">
-        <BannerSlider banners={banners ?? []} variant="panel" empty={
-          <div className="flex h-full flex-col items-center justify-center gap-4 bg-primary p-10 text-center text-primary-foreground">
-            <img src="/brand/logo-white.png" alt="PediuLanchou" className="h-14 w-auto" />
-            <p className="max-w-xs text-lg font-semibold">Seu delivery, do pedido à entrega, em um só lugar.</p>
-          </div>
-        } />
-      </aside>
+      {/* metade da direita: só em telas grandes e só quando o super admin cadastrou banners */}
+      {hasBanners && (
+        <aside className="relative hidden lg:block" aria-label="Novidades">
+          <BannerSlider banners={banners!} variant="panel" />
+        </aside>
+      )}
     </div>
   );
 }

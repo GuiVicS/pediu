@@ -59,7 +59,7 @@ function Shell() {
     <div className="flex min-h-screen bg-background font-brand text-foreground">
       {open && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setOpen(false)} />}
       <aside className={cx('fixed inset-y-0 left-0 z-40 flex w-[17rem] flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform lg:static lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
-        <div className="relative bg-primary px-5 pb-9 pt-5">
+        <div className="relative rounded-b-[1.75rem] bg-primary px-7 pb-8 pt-7">
           <img src="/brand/logo-white.png" alt="PediuLanchou" className="h-10 w-auto" />
           <button className="absolute right-3 top-3 rounded-full p-1.5 text-white/80 hover:bg-white/15 lg:hidden" onClick={() => setOpen(false)} aria-label="Fechar menu"><X size={18} /></button>
         </div>
@@ -107,8 +107,8 @@ function StoreCard() {
   const label = !st ? '' : dev ? 'Em desenvolvimento' : st.status !== 'producao' ? st.status : st.open ? 'Loja aberta' : 'Loja fechada';
   const dot = dev ? 'bg-amber-500' : st?.open && st.status === 'producao' ? 'bg-green-500' : 'bg-slate-400';
   return (
-    <div className="-mt-5 rounded-t-[1.75rem] bg-sidebar px-4 pb-3 pt-6">
-      <div className="flex items-center gap-3">
+    <div className="bg-sidebar px-6 pb-3 pt-6">
+      <div className="flex items-center gap-3.5">
         {st?.logoUrl ? <img src={st.logoUrl} alt="" className="h-14 w-14 shrink-0 rounded-full object-cover ring-2 ring-border" />
           : <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent text-primary ring-2 ring-border"><StoreIcon size={24} /></span>}
         <div className="min-w-0 flex-1 leading-tight">
