@@ -1,6 +1,6 @@
 # Hospedar o Pediu no Portainer — passo a passo
 
-> Continuidade em 2026-10-07: consulte também [`../HANDOFF.md`](../HANDOFF.md). O guia abaixo foi recuperado do ambiente local e descreve a configuração anterior. Agora existem **seis migrations**: aplique também `20261010000001_customers.sql` após as cinco originais. O login de clientes por e-mail exige `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` e `MAIL_FROM` no ambiente da API; o compose Portainer ainda precisa repassá-las. Sem SMTP, a solicitação de código retorna 503. As instruções de infraestrutura deste guia não foram revalidadas nesta passagem.
+> Continuidade em 2026-10-07: consulte também [`../HANDOFF.md`](../HANDOFF.md). O guia abaixo foi recuperado do ambiente local e descreve a configuração anterior. Agora existem **nove migrations** (veja a lista na seção 3). O login de clientes por e-mail exige `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` e `MAIL_FROM`; o compose Portainer atual já repassa essas variáveis e as do agente de IA (`ANTHROPIC_API_KEY`, `TRANSCRIBE_*`). Sem SMTP, a solicitação de código retorna 503. As instruções de infraestrutura deste guia não foram revalidadas nesta passagem.
 
 Guia para colocar a plataforma Pediu (`https://github.com/GuiVicS/pediu`) no ar em uma VPS, gerenciada pelo Portainer.
 Baseado no que foi validado localmente (stack `pediu-local`) e no compose/Caddyfile do repositório (`deploy/`).
@@ -61,13 +61,18 @@ Domínios próprios de cada loja (ex.: `www.minhaloja.com.br`) apontam com A/CNA
 ## 3. Banco (Supabase)
 
 1. Crie o projeto novo no Supabase. Anote o **project ref**.
-2. Aplique as 5 migrations **em ordem** (SQL Editor do Supabase, ou `supabase db push` com a CLI):
+2. Aplique **todas as migrations** da pasta, **em ordem** (hoje são 9; a lista completa e comentada está em [`GUIA-DIDATICO.md`](GUIA-DIDATICO.md), Parte 7.3). Use o SQL Editor do Supabase (ou `supabase db push` com a CLI). As cinco primeiras:
    ```
    packages/db/supabase/migrations/20261007000001_core.sql
    packages/db/supabase/migrations/20261007000002_catalog.sql
    packages/db/supabase/migrations/20261008000001_orders_staff.sql
    packages/db/supabase/migrations/20261008000002_observability.sql
    packages/db/supabase/migrations/20261009000001_ops_print_pay_ifood.sql
+   # depois, em ordem:
+   packages/db/supabase/migrations/20261010000001_customers.sql
+   packages/db/supabase/migrations/20261011000001_store_features.sql
+   packages/db/supabase/migrations/20261011000002_extension_pairing.sql
+   packages/db/supabase/migrations/20261011000003_extension_features.sql
    ```
    Elas criam os roles `app_api`, `platform_api` e `mcp_agent` **sem senha**.
 3. Defina uma senha forte para cada role (SQL Editor):

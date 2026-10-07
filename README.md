@@ -2,7 +2,9 @@
 
 Base de produção do Pediu Lanchou. A demo continua separada em `../pediu-mvp`.
 
-**Comece pelo assistente passo a passo:** abra `docs/index.html` no navegador (arquivo único, funciona offline).
+**Novo na equipe?** Comece por [`docs/GUIA-DIDATICO.md`](docs/GUIA-DIDATICO.md): termos, fluxogramas, uso das telas, Portainer e código, sem exigir conhecimento técnico.
+
+Assistente passo a passo de instalação: abra `docs/index.html` no navegador (arquivo único, funciona offline). Estado do trabalho: [`HANDOFF.md`](HANDOFF.md).
 
 ## O que há aqui
 
@@ -18,7 +20,8 @@ Base de produção do Pediu Lanchou. A demo continua separada em `../pediu-mvp`.
 | `apps/print-agent` | agente de impressão (Windows/Linux/Mac) |
 | `packages/escpos` | gerador de cupom ESC/POS e prévia em texto |
 | `deploy/` | Caddyfile (HTTPS automático) e compose de exemplo |
-| `docs/index.html` | assistente de instalação e operação (30 passos) · `docs/TESTES.md` lista de testes a rodar |
+| `apps/whatsapp-extension` | extensão do Chrome para atendimento pelo WhatsApp (agente de IA, respostas rápidas, disparos) |
+| `docs/` | `GUIA-DIDATICO.md` (guia completo), `index.html` (assistente de instalação, 30 passos), `PORTAINER-DEPLOY.md`, `DOMINIOS.md`, `TESTES.md`, `PLANO-EXTENSAO-WHATSAPP.md` |
 
 ## Rodar os testes (não precisam de banco nem de internet)
 

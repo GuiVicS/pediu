@@ -233,3 +233,6 @@ A plataforma se chama **PediuLanchou**. A extensão agora usa a marca: nome “P
 
 ### Transcrição com Whisper (2026-10-07)
 Decisão do usuário: transcrição de áudio usa **Whisper**. O adaptador (`apps/api/src/llm.ts`) fala o protocolo `/audio/transcriptions` (idioma `pt`). Configuração: API da OpenAI → só `TRANSCRIBE_API_KEY` (modelo padrão `whisper-1`, ajustável em `TRANSCRIBE_MODEL`); servidor próprio ou Groq/faster-whisper/whisper.cpp → `TRANSCRIBE_URL` (chave opcional). Sem nenhum dos dois a transcrição responde 503. Não testado com Whisper real (só adaptador simulado); validar OGG/Opus do WhatsApp, tamanho (limite atual ~5 MB) e qualidade em português.
+
+### Documentação didática (2026-10-07)
+Criado `docs/GUIA-DIDATICO.md`: guia para quem entra na equipe sem conhecimento técnico (glossário, perfis, tecnologias, 6 fluxogramas Mermaid validados, uso das telas do super admin/painel/PDV/cliente/extensão, Portainer, as 9 migrations em ordem, variáveis de ambiente, criação do primeiro super admin por `npm run create-admin`, receita para novas funcionalidades, solução de problemas, melhorias e checklist de onboarding). README e `docs/PORTAINER-DEPLOY.md` apontam para ele e a lista de migrations foi atualizada para 9. Itens marcados ⚠️ no guia ainda não foram validados no mundo real. Manter o guia atualizado a cada mudança de tela/variável.
