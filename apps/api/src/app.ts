@@ -19,6 +19,7 @@ import { uploadRoutes } from './uploads.js';
 import { existsSync } from 'node:fs';
 import fastifyStatic from '@fastify/static';
 import { staffRoutes } from './staff.js';
+import { extensionRoutes } from './extension.js';
 import { featureRoutes, storeRoutes } from './stores.js';
 
 export function buildApp(ctx: Ctx, opts: { trustProxy?: boolean; logger?: boolean; platformUiDir?: string } = {}) {
@@ -56,6 +57,7 @@ export function buildApp(ctx: Ctx, opts: { trustProxy?: boolean; logger?: boolea
   authRoutes(app, ctx);
   storeRoutes(app, ctx);
   featureRoutes(app, ctx);
+  extensionRoutes(app, ctx);
   billingRoutes(app, ctx);
   analyticsRoutes(app, ctx);
   staffDashboardRoutes(app, ctx);

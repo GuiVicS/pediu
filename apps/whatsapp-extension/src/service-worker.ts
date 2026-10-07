@@ -19,3 +19,6 @@ chrome.runtime.onConnect.addListener((port) => {
     if (event) void record(event);
   });
 });
+
+// credencial só para contextos confiáveis (popup/service worker); content scripts não leem
+void chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });

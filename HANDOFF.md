@@ -203,3 +203,14 @@ Pendente da etapa 1 (critério: conta de teste recebe texto/áudio/imagem e reco
 - Decisão: a checklist é a única fonte para estas funcionalidades; `plans.modules` não as controla (evita fontes contraditórias).
 - Validado nesta passagem: `npm run check` (sem erros), SQL (migração + RLS existentes passam), `apps/api/test/stores.test.ts` 7/7, `packages/shared/test/features.test.ts` 3/3. Não rodei a suíte completa da API nem testei a tela no navegador. Não há teste SQL de RLS específico para `store_features` ainda.
 - Pendente da etapa 2: pareamento extensão↔sessão do lojista (código de uso único, dispositivo, credencial restrita, revogação), e o backend deve checar `store_features` em cada uso.
+
+### Etapa 2 (parte 2) — pareamento extensão ↔ sessão do lojista (implementado)
+
+Fluxo: lojista logado (`admin.pedidos`) gera código de 8 caracteres em `/painel/whatsapp` (uso único, 5 min, um ativo por pessoa, exige `whatsapp_support` liberado) → extensão troca o código por credencial própria `pext_…` → a credencial é validada a cada chamada.
+- Migration `20261011000002_extension_pairing.sql`: `extension_pairings`, `extension_devices` (só hashes; RLS por tenant), funções `app.extension_pair` (consome o código de forma atômica) e `app.extension_device` (exige dispositivo não revogado, sessão do lojista viva, usuário ativo e recurso ainda liberado), `app.feature_on`.
+- API (`apps/api/src/extension.ts`): `POST /v1/staff/extension/pairing`, `POST /v1/extension/pair` (rate limit 10/min), `GET /v1/extension/me` (Bearer), `GET /v1/staff/extension/devices`, `DELETE /v1/staff/extension/devices/:id`; auditoria `extension.pairing_created/paired/device_revoked`. Guard reutilizável `extensionGuard` para as próximas rotas.
+- Painel (`apps/web/src/admin/WhatsappAdmin.tsx`, menu Loja → “Atendimento WhatsApp”): gerar código, listar e desconectar dispositivos.
+- Extensão: `src/api.ts` (cliente), `popup.html/popup.ts` (endereço + código; permissão do host pedida por gesto do usuário; credencial em `chrome.storage.local` com acesso só a contextos confiáveis; detecta conexão revogada).
+- Decisão: a credencial dura enquanto a sessão do lojista (12 h, limite de inatividade 2 h do cookie não se aplica ao dispositivo) estiver válida; logout/expiração derrubam a extensão, conforme o plano. Se isso incomodar na operação, avaliar renovação explícita.
+- Validado: `npm run check` limpo; suíte da API completa; `extension.test.ts` (5 casos: recurso desligado, replay, expiração, logout/revogação/desativação, isolamento entre lojas e permissão); testes da extensão 8/8; build gera `dist/`. **Não testado**: popup no Chrome real, tela `/painel/whatsapp` no navegador, migration em banco real/Portainer.
+- Etapa 2 concluída no código. Próximo: etapa 3 (catálogo, respostas rápidas e pedidos autorizados via `extensionGuard`) e fechar a etapa 1 com teste manual no WhatsApp Web.

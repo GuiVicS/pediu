@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Pediu</title>
+<style>body{font:14px system-ui;width:300px;padding:14px}input,button{width:100%;box-sizing:border-box;padding:8px;margin:4px 0}h1{font-size:16px;margin:0 0 8px}#msg{color:#b45309;font-size:12px;min-height:1em}</style></head>
+<body>
+<h1>Pediu — Atendimento WhatsApp</h1>
+<div id="pair" hidden>
+  <p>No painel da loja, abra <b>Atendimento WhatsApp</b> e gere um código.</p>
+  <input id="api" placeholder="Endereço do Pediu (https://...)" autocomplete="off">
+  <input id="code" placeholder="Código de 8 caracteres" maxlength="12" autocomplete="off">
+  <button id="connect">Conectar</button>
+</div>
+<div id="linked" hidden><p>Conectado à loja <b id="store"></b>.</p><button id="disconnect">Desconectar</button></div>
+<div id="msg"></div>
+<script src="popup.js"></script>
+</body></html>

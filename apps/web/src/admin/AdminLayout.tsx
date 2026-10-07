@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import {
   Bell, Bike, ConciergeBell, CreditCard, Globe, Image, LayoutDashboard, Layers, ListPlus, LogOut, Menu, Monitor, Package, Palette, Printer,
   ShoppingBag, Star, Store as StoreIcon, UserCog, Users, ExternalLink, Truck, type LucideIcon,
+  MessageCircle,
 } from 'lucide-react';
 import type { Perm } from '@pediu/shared/browser';
 import { ROLE_LABEL } from '@/lib/roles';
@@ -17,7 +18,7 @@ const NAV: { title: string; items: [to: string, label: string, Icon: LucideIcon,
   { title: 'Operação', items: [['/painel', 'Dashboard', LayoutDashboard, 'admin.dashboard'], ['/painel/pedidos', 'Pedidos', ShoppingBag, 'admin.pedidos'], ['/painel/clientes', 'Clientes', Users, 'admin.pedidos']] },
   { title: 'Apps de operação', items: [['/pdv', 'PDV', Monitor, 'pdv'], ['/garcom', 'Garçom (mesas)', ConciergeBell, 'garcom'], ['/entregador', 'Entregador', Bike, 'motoboy']] },
   { title: 'Cardápio', items: [['/painel/produtos', 'Produtos', Package, 'admin.cardapio'], ['/painel/categorias', 'Categorias', Layers, 'admin.cardapio'], ['/painel/adicionais', 'Adicionais', ListPlus, 'admin.cardapio'], ['/painel/destaques', 'Destaques', Star, 'admin.cardapio']] },
-  { title: 'Loja', items: [['/painel/aparencia', 'Aparência', Palette, 'admin.loja'], ['/painel/banners', 'Banners', Image, 'admin.loja'], ['/painel/pagamentos', 'Pagamentos', CreditCard, 'admin.loja'], ['/painel/loja', 'Loja e entrega', StoreIcon, 'admin.loja'], ['/painel/impressao', 'Impressão', Printer, 'admin.loja'], ['/painel/ifood', 'iFood', Truck, 'admin.loja'], ['/painel/dominios', 'Domínios', Globe, 'admin.loja']] },
+  { title: 'Loja', items: [['/painel/aparencia', 'Aparência', Palette, 'admin.loja'], ['/painel/banners', 'Banners', Image, 'admin.loja'], ['/painel/pagamentos', 'Pagamentos', CreditCard, 'admin.loja'], ['/painel/loja', 'Loja e entrega', StoreIcon, 'admin.loja'], ['/painel/impressao', 'Impressão', Printer, 'admin.loja'], ['/painel/ifood', 'iFood', Truck, 'admin.loja'], ['/painel/dominios', 'Domínios', Globe, 'admin.loja'], ['/painel/whatsapp', 'Atendimento WhatsApp', MessageCircle, 'admin.pedidos']] },
   { title: 'Equipe', items: [['/painel/usuarios', 'Usuários', UserCog, 'admin.usuarios']] },
 ];
 

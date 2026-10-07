@@ -4,20 +4,44 @@
   "version": "0.1.0",
   "description": "Conecta o WhatsApp Web do lojista ao atendimento do Pediu.",
   "minimum_chrome_version": "120",
-  "permissions": ["storage"],
-  "host_permissions": ["https://web.whatsapp.com/*"],
-  "background": { "service_worker": "service-worker.js", "type": "module" },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://web.whatsapp.com/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
   "content_scripts": [
     {
-      "matches": ["https://web.whatsapp.com/*"],
-      "js": ["wppconnect-wa.js", "main-world.js"],
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "js": [
+        "wppconnect-wa.js",
+        "main-world.js"
+      ],
       "world": "MAIN",
       "run_at": "document_start"
     },
     {
-      "matches": ["https://web.whatsapp.com/*"],
-      "js": ["bridge.js"],
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
       "run_at": "document_start"
     }
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ]
 }
