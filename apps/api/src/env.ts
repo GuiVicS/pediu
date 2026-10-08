@@ -12,7 +12,7 @@ const Env = z.object({
   COOKIE_SECURE: z.enum(['true', 'false']).default('true'),
   TRUST_PROXY: z.enum(['true', 'false']).default('true'),
   // opcional: alertas chegam aqui (Slack e compatíveis recebem {text}; o corpo traz também o alerta completo)
-  ALERT_WEBHOOK_URL: z.string().url().optional(),
+  ALERT_WEBHOOK_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),   // vazio = sem webhook (o compose repassa '' quando não definido)
   // URL pública da API (https). Usada nos webhooks do Mercado Pago/Sicoob e nos links de pagamento.
   PUBLIC_API_URL: z.string().url().optional(),
   // pasta com o build do apps/platform (tela do super admin)
