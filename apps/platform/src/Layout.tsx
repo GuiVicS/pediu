@@ -25,9 +25,9 @@ export default function Layout() {
     <ToastProvider>
       <div className="flex min-h-screen bg-background font-brand text-foreground">
         {open && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setOpen(false)} />}
-        <aside className={cx('fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform lg:static lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
+        <aside className={cx('fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform lg:sticky lg:top-0 lg:h-screen lg:max-h-screen lg:shrink-0 lg:self-start lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
           <div className="border-b border-sidebar-border px-5 py-4"><img src="/brand/logo.png" alt="Pediu" className="h-9 w-auto dark:hidden" /><img src="/brand/logo-white.png" alt="Pediu" className="hidden h-9 w-auto dark:block" /><div className="mt-2 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/60">Super admin</div></div>
-          <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+          <nav className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-4">
             {NAV.map((g) => (
               <div key={g.title}><div className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/60">{g.title}</div>
                 {g.items.map(([to, label, Icon]) => (

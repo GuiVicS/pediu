@@ -19,6 +19,7 @@ services:
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY:-}
       SUPABASE_BUCKET: ${SUPABASE_BUCKET:-pediu-public}
+      INTERNAL_WHISPER_URL: http://whisper:8000/v1/audio/transcriptions   # transcrição de áudio no serviço interno (abaixo); a tela de IA do super admin pode trocar
       # login de clientes por e-mail (sem SMTP o código de acesso responde 503)
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -33,6 +34,17 @@ services:
       TRANSCRIBE_URL: ${TRANSCRIBE_URL:-}
       TRANSCRIBE_MODEL: ${TRANSCRIBE_MODEL:-whisper-1}
     volumes: ["uploads:/data/uploads"]   # usado só se NÃO houver Supabase Storage
+    restart: unless-stopped
+
+  # Whisper interno: transcrição de áudio dentro da stack (sem porta pública). Modelo baixa na 1ª subida. small ≈ 1 GB de RAM; use tiny/base em VPS pequena.
+  whisper:
+    build: { context: ./apps/whisper }
+    image: pediu-whisper:latest
+    environment:
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      WHISPER_COMPUTE: int8
+      WHISPER_LANGUAGE: pt
+    volumes: ["whisper_models:/models"]
     restart: unless-stopped
 
   edge:
@@ -94,4 +106,4 @@ configs:
         reverse_proxy mcp:3100
       }
 
-volumes: { uploads: {}, caddy_data: {} }
+volumes: { uploads: {}, caddy_data: {}, whisper_models: {} }

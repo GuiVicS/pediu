@@ -11,7 +11,8 @@ export const PLATFORM_STORAGE_ID = '00000000-0000-0000-0000-0000000000ba';
 
 const uuid = z.string().uuid();
 const PLACEMENTS = ['login', 'dashboard'] as const;
-const httpUrl = z.string().trim().max(2048).refine((u) => /^https?:\/\/[^\s]+$/i.test(u), 'Informe um endereço http(s) válido.');
+/** Imagem do banner: endereço http(s) ou caminho relativo de upload (/uploads/…), que funciona em qualquer domínio que aponte para a plataforma. */
+const httpUrl = z.string().trim().max(2048).refine((u) => /^https?:\/\/[^\s]+$/i.test(u) || /^\/uploads\/[A-Za-z0-9\-._~/]+$/.test(u), 'Informe um endereço http(s) ou um caminho de upload válido.');
 /** Link do banner: http(s) ou um caminho do próprio painel (ex.: /painel/cupons). Nunca javascript: ou data:. */
 const linkUrl = z.string().trim().max(2048).refine((u) => u === '' || /^https?:\/\/[^\s]+$/i.test(u) || /^\/[A-Za-z0-9\-._~!$&'()*+,;=:@%/?#]*$/.test(u), 'O link deve ser http(s) ou um caminho como /painel.');
 

@@ -45,18 +45,17 @@ export function BannerSlider({ banners, variant, className, empty }: { banners: 
   };
   const strip = variant === 'strip';
   return (
-    <section aria-roledescription="carrossel" aria-label="Novidades da plataforma" className={cx('group relative overflow-hidden', strip ? 'h-24 rounded-2xl border border-border shadow-ui-sm sm:h-28' : 'h-full w-full', className)}
+    <section aria-roledescription="carrossel" aria-label="Novidades da plataforma" className={cx('group relative min-w-0 max-w-full overflow-hidden', strip ? 'h-24 rounded-2xl border border-border shadow-ui-sm sm:h-28' : 'h-full w-full', className)}
       onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} onFocus={() => setPaused(true)} onBlur={() => setPaused(false)}>
-      <div className="flex h-full transition-transform duration-500 ease-out motion-reduce:transition-none" style={{ width: `${n * 100}%`, transform: `translateX(-${(i * 100) / n}%)` }}>
-        {banners.map((b, k) => (
-          <div key={b.id} className="h-full" style={{ width: `${100 / n}%` }} role="group" aria-roledescription="slide" aria-label={`${k + 1} de ${n}`} aria-hidden={k !== i}>
-            <button type="button" onClick={() => open(b)} tabIndex={k === i ? 0 : -1} disabled={!b.linkUrl} aria-label={b.title ? `${b.title}${b.linkUrl ? ' (abrir)' : ''}` : 'Banner'}
-              className={cx('block h-full w-full', b.linkUrl ? 'cursor-pointer' : 'cursor-default')}>
-              <img src={b.imageUrl} alt={b.title} loading={k === 0 ? 'eager' : 'lazy'} className="h-full w-full object-cover" draggable={false} />
-            </button>
-          </div>
-        ))}
-      </div>
+      {/* um banner por vez, todos empilhados no mesmo lugar (só a opacidade muda): nada tem largura própria, então nada vaza para o lado */}
+      {banners.map((b, k) => (
+        <div key={b.id} className={cx('absolute inset-0 transition-opacity duration-500 motion-reduce:transition-none', k === i ? 'opacity-100' : 'pointer-events-none opacity-0')} role="group" aria-roledescription="slide" aria-label={`${k + 1} de ${n}`} aria-hidden={k !== i}>
+          <button type="button" onClick={() => open(b)} tabIndex={k === i ? 0 : -1} disabled={!b.linkUrl} aria-label={b.title ? `${b.title}${b.linkUrl ? ' (abrir)' : ''}` : 'Banner'}
+            className={cx('block h-full w-full', b.linkUrl ? 'cursor-pointer' : 'cursor-default')}>
+            <img src={b.imageUrl} alt={b.title} loading={k === 0 ? 'eager' : 'lazy'} className="h-full w-full object-cover" draggable={false} />
+          </button>
+        </div>
+      ))}
       {n > 1 && (
         <>
           <button type="button" onClick={() => go(i - 1)} aria-label="Banner anterior" className="absolute left-2 top-1/2 hidden -translate-y-1/2 rounded-full bg-black/40 p-1.5 text-white opacity-0 transition hover:bg-black/60 focus:opacity-100 group-hover:opacity-100 sm:block"><ChevronLeft size={strip ? 16 : 20} /></button>

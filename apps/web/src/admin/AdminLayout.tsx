@@ -58,13 +58,13 @@ function Shell() {
   return (
     <div className="flex min-h-screen bg-background font-brand text-foreground">
       {open && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setOpen(false)} />}
-      <aside className={cx('fixed inset-y-0 left-0 z-40 flex w-[17rem] flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform lg:static lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
+      <aside className={cx('fixed inset-y-0 left-0 z-40 flex w-[17rem] flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform lg:sticky lg:top-0 lg:h-screen lg:max-h-screen lg:shrink-0 lg:self-start lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
         <div className="relative rounded-b-[1.75rem] bg-primary px-7 pb-8 pt-7">
           <img src="/brand/logo-white.png" alt="PediuLanchou" className="h-10 w-auto" />
           <button className="absolute right-3 top-3 rounded-full p-1.5 text-white/80 hover:bg-white/15 lg:hidden" onClick={() => setOpen(false)} aria-label="Fechar menu"><X size={18} /></button>
         </div>
         <StoreCard />
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-3 pt-1" aria-label="Menu do painel">
+        <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 pb-3 pt-1" aria-label="Menu do painel">
           {MAIN.filter((i) => can(i.perm)).map((i) => <NavItem key={i.to} item={i} path={loc.pathname} badge={i.to === '/painel/pedidos' ? novos : 0} />)}
           {MORE.some((i) => can(i.perm)) && <div className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">Mais</div>}
           {MORE.filter((i) => can(i.perm)).map((i) => <NavItem key={i.to} item={i} path={loc.pathname} badge={0} />)}
@@ -93,7 +93,7 @@ function Shell() {
           </div>
         </div>
         {!armed && <div className="bg-blue-500/10 px-4 py-1.5 text-center text-xs text-blue-700 dark:text-blue-300">Toque em qualquer lugar da página para ativar o som de pedido novo.</div>}
-        <main className="flex-1 p-4 lg:px-7 lg:pb-7 lg:pt-3"><TopbarSlot.Provider value={slot}><Outlet /></TopbarSlot.Provider></main>
+        <main className="min-w-0 flex-1 p-4 lg:px-7 lg:pb-7 lg:pt-3"><TopbarSlot.Provider value={slot}><Outlet /></TopbarSlot.Provider></main>
       </div>
     </div>
   );

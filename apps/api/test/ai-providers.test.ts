@@ -33,6 +33,11 @@ test('transcrição por ambiente: OpenAI, Groq e servidor próprio', () => {
   assert.equal(sttConfigFromEnv({ TRANSCRIBE_PROVIDER: 'groq', GROQ_API_KEY: 'gk' })!.provider, 'groq');
   const c = sttConfigFromEnv({ TRANSCRIBE_URL: 'http://whisper:8000/v1/audio/transcriptions' })!;
   assert.deepEqual([c.provider, c.apiKey], ['custom', undefined]);
+  // Whisper interno da stack: INTERNAL_WHISPER_URL liga, vence as chaves de nuvem e perde só para endereço próprio/provedor escolhido
+  const i = sttConfigFromEnv({ INTERNAL_WHISPER_URL: 'http://whisper:8000/v1/audio/transcriptions', OPENAI_API_KEY: 'k', INTERNAL_WHISPER_KEY: 'seg' })!;
+  assert.deepEqual([i.provider, i.url, i.apiKey, i.model], ['internal', 'http://whisper:8000/v1/audio/transcriptions', 'seg', 'whisper-1']);
+  assert.equal(sttConfigFromEnv({ TRANSCRIBE_PROVIDER: 'internal' })!.url, 'http://whisper:8000/v1/audio/transcriptions');   // padrão sem variável
+  assert.equal(sttConfigFromEnv({ INTERNAL_WHISPER_URL: 'http://x/v1/audio/transcriptions', TRANSCRIBE_PROVIDER: 'groq', GROQ_API_KEY: 'g' })!.provider, 'groq');
 });
 
 // ---------- adaptador OpenAI-compatível ----------

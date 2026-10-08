@@ -79,7 +79,7 @@ export function customerRoutes(app: FastifyInstance, ctx: Ctx) {
     if (out.limited) return fail(reply, 429, 'too_many_codes', 'Você pediu códigos demais. Aguarde um pouco e tente de novo.');
     const origin = originOf(ctx, req);
     const mail = loginCodeEmail({
-      storeName: store.name, storeUrl: origin ? `${origin}/` : '', logoUrl: out.theme.logoUrl, primary: out.theme.primary, primaryFg: out.theme.primaryFg,
+      storeName: store.name, storeUrl: origin ? `${origin}/` : '', logoUrl: out.theme.logoUrl?.startsWith('/') && origin ? `${origin}${out.theme.logoUrl}` : out.theme.logoUrl, primary: out.theme.primary, primaryFg: out.theme.primaryFg,
       code: plain, minutes: CODE_TTL_MIN, landingUrl: out.landing, poweredByLogoUrl: origin ? `${origin}/brand/logo-allblack.png` : '',
     });
     try { await ctx.mailer.send({ to: b.email, ...mail }); }

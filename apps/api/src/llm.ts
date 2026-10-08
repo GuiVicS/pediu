@@ -129,9 +129,10 @@ export function openAiCompatLlm(o: { apiKey?: string; model: string; baseUrl: st
 }
 
 // ================= transcrição de áudio =================
-export type SttProviderId = 'openai' | 'groq' | 'custom';
+export type SttProviderId = 'internal' | 'openai' | 'groq' | 'custom';
 export interface SttPreset { id: SttProviderId; label: string; url: string; defaultModel: string; keyEnv: string; needsKey: boolean; note: string }
 export const STT_PRESETS: SttPreset[] = [
+  { id: 'internal', label: 'Whisper interno (servidor da plataforma)', url: 'http://whisper:8000/v1/audio/transcriptions', defaultModel: 'whisper-1', keyEnv: 'INTERNAL_WHISPER_KEY', needsKey: false, note: 'Roda dentro da sua stack (serviço whisper): o áudio não sai para terceiros. O modelo é definido no serviço (WHISPER_MODEL).' },
   { id: 'openai', label: 'OpenAI (Whisper)', url: 'https://api.openai.com/v1/audio/transcriptions', defaultModel: 'whisper-1', keyEnv: 'OPENAI_API_KEY', needsKey: true, note: 'Whisper hospedado pela OpenAI.' },
   { id: 'groq', label: 'Groq (Whisper rápido)', url: 'https://api.groq.com/openai/v1/audio/transcriptions', defaultModel: 'whisper-large-v3-turbo', keyEnv: 'GROQ_API_KEY', needsKey: true, note: 'Whisper muito rápido e barato.' },
   { id: 'custom', label: 'Servidor próprio (faster-whisper, whisper.cpp…)', url: '', defaultModel: 'whisper-1', keyEnv: 'TRANSCRIBE_API_KEY', needsKey: false, note: 'Qualquer servidor com /audio/transcriptions. Informe o endereço completo.' },
@@ -139,16 +140,17 @@ export const STT_PRESETS: SttPreset[] = [
 export const sttPreset = (id: string) => STT_PRESETS.find((p) => p.id === id);
 export interface SttConfig { provider: SttProviderId; url: string; apiKey?: string; model: string }
 
-/** Variáveis: TRANSCRIBE_URL (servidor próprio) ou TRANSCRIBE_PROVIDER=openai|groq; a chave vem de TRANSCRIBE_API_KEY ou da chave do provedor (OPENAI_API_KEY / GROQ_API_KEY). */
+/** Variáveis: TRANSCRIBE_URL (servidor próprio) ou TRANSCRIBE_PROVIDER=internal|openai|groq; INTERNAL_WHISPER_URL liga o Whisper interno da stack; a chave vem de TRANSCRIBE_API_KEY ou da chave do provedor (OPENAI_API_KEY / GROQ_API_KEY / INTERNAL_WHISPER_KEY). */
 export function sttConfigFromEnv(env: Record<string, string | undefined>): SttConfig | undefined {
   const pick = (v?: string) => (v && v.trim() ? v.trim() : undefined);
   const url = pick(env.TRANSCRIBE_URL);
   const explicit = pick(env.TRANSCRIBE_PROVIDER)?.toLowerCase();
-  const preset = url ? sttPreset('custom')! : explicit ? sttPreset(explicit) : (pick(env.TRANSCRIBE_API_KEY) || pick(env.OPENAI_API_KEY)) ? sttPreset('openai') : pick(env.GROQ_API_KEY) ? sttPreset('groq') : undefined;
+  // ordem: endereço próprio > provedor escolhido > Whisper interno da stack (INTERNAL_WHISPER_URL) > chaves de provedores na nuvem
+  const preset = url ? sttPreset('custom')! : explicit ? sttPreset(explicit) : pick(env.INTERNAL_WHISPER_URL) ? sttPreset('internal') : (pick(env.TRANSCRIBE_API_KEY) || pick(env.OPENAI_API_KEY)) ? sttPreset('openai') : pick(env.GROQ_API_KEY) ? sttPreset('groq') : undefined;
   if (!preset) return undefined;
   const apiKey = pick(env.TRANSCRIBE_API_KEY) ?? (preset.id === 'custom' ? undefined : pick(env[preset.keyEnv]));
   if (preset.needsKey && !apiKey) return undefined;
-  const target = url ?? preset.url;
+  const target = url ?? (preset.id === 'internal' ? pick(env.INTERNAL_WHISPER_URL) : undefined) ?? preset.url;
   if (!target) return undefined;
   return { provider: preset.id, url: target, apiKey, model: pick(env.TRANSCRIBE_MODEL) ?? preset.defaultModel };
 }

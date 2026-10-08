@@ -38,7 +38,7 @@ export function Banners() {
   if (!l.data) return <Spinner />;
   const all = l.data.banners;
   const area = draft ? AREAS.find((a) => a.id === draft.placement)! : AREAS[0]!;
-  const valid = !!draft && /^https?:\/\/\S+$/i.test(draft.imageUrl) && (draft.linkUrl === '' || /^https?:\/\/\S+$/i.test(draft.linkUrl) || /^\/\S*$/.test(draft.linkUrl)) && (!draft.startsAt || !draft.endsAt || draft.endsAt > draft.startsAt);
+  const valid = !!draft && (/^https?:\/\/\S+$/i.test(draft.imageUrl) || /^\/uploads\/\S+$/.test(draft.imageUrl)) && (draft.linkUrl === '' || /^https?:\/\/\S+$/i.test(draft.linkUrl) || /^\/\S*$/.test(draft.linkUrl)) && (!draft.startsAt || !draft.endsAt || draft.endsAt > draft.startsAt);
 
   const upload = async (f: File) => {
     setUploading(true);

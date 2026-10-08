@@ -63,7 +63,7 @@ export function createAiRuntime(ctx: Ctx, env: Record<string, string | undefined
       const p = sttPreset(s.provider);
       if (p) {
         const apiKey = s.apiKey ?? (p.id !== 'custom' ? env[p.keyEnv] : undefined);
-        const url = s.baseUrl || p.url, model = s.model || p.defaultModel;
+        const url = s.baseUrl || (p.id === 'internal' ? env.INTERNAL_WHISPER_URL : undefined) || p.url, model = s.model || p.defaultModel;
         if ((!p.needsKey || apiKey) && url && model) return { cfg: { provider: p.id, url, apiKey, model }, source: 'painel' };
       }
     }

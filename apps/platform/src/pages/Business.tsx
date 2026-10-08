@@ -192,7 +192,7 @@ function AiCard({ kind, title, desc, presets, active, saved, onChanged }: { kind
   const [test, setTest] = useState<{ ok: boolean; ms?: number; reply?: string; error?: string } | null>(null);
   const preset = presets.find((p) => p.id === provider) ?? presets[0]!;
   const sameSaved = saved?.provider === provider;
-  const customUrl = provider === 'custom' || provider === 'ollama';
+  const customUrl = provider === 'custom' || provider === 'ollama' || provider === 'internal';
   const pick = (id: string) => {
     setProvider(id); setApiKey(''); setTest(null);
     const p = presets.find((x) => x.id === id)!;

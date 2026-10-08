@@ -27,6 +27,8 @@ test('banners: só o super admin cadastra (com step-up) e valida links e datas',
   assert.equal((await sa.post('/v1/platform/banners', body({ startsAt: '2030-01-02T00:00:00Z', endsAt: '2030-01-01T00:00:00Z' }))).status, 400);
   const ok = await sa.post('/v1/platform/banners', body({ linkUrl: '/painel/cupons', title: 'Cupons novos', sort: 2 }));   // caminho do painel também vale
   assert.equal(ok.status, 201); assert.equal(ok.body.linkUrl, '/painel/cupons');
+  assert.equal((await sa.post('/v1/platform/banners', body({ imageUrl: '/uploads/00000000-0000-0000-0000-0000000000ba/a.png' }))).status, 201);   // upload relativo
+  assert.equal((await sa.post('/v1/platform/banners', body({ imageUrl: '/etc/passwd' }))).status, 400);                                                // só /uploads/…
 });
 
 test('o público vê só os ativos e dentro da validade, na ordem, por área; editar e apagar', async () => {
