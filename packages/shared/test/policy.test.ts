@@ -16,6 +16,8 @@ test('perfis: o mesmo que a demo libera', () => {
 
 test('MCP: escreve só em desenvolvimento e lê tudo menos arquivada', () => {
   for (const s of STORE_STATUS) assert.equal(mcpCanWrite(s), s === 'desenvolvimento');
+  // token com permissão de produção: também produção; suspensa e arquivada continuam travadas
+  for (const s of STORE_STATUS) assert.equal(mcpCanWrite(s, true), s === 'desenvolvimento' || s === 'producao');
   assert.equal(mcpCanRead('producao'), true);
   assert.equal(mcpCanRead('suspensa'), true);
   assert.equal(mcpCanRead('arquivada'), false);

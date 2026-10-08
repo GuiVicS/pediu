@@ -65,7 +65,8 @@ test('envio da imagem: confere o conteúdo e devolve a URL pública', async () =
   assert.equal((await sa.post('/v1/platform/uploads', { contentType: 'image/png', dataBase64: Buffer.from('isto nao e uma imagem de verdade').toString('base64') })).status, 422);
   const ok = await sa.post('/v1/platform/uploads', { contentType: 'image/png', dataBase64: PNG });
   assert.equal(ok.status, 200);
-  assert.match(ok.body.url, /^http:\/\/api\.test\/uploads\/00000000-0000-0000-0000-0000000000ba\/[0-9a-f-]{36}\.png$/);
+  // URL relativa: abre por qualquer domínio da loja e pelo super admin, mesmo com PUBLIC_API_URL definido
+  assert.match(ok.body.url, /^\/uploads\/00000000-0000-0000-0000-0000000000ba\/[0-9a-f-]{36}\.png$/);
   const file = join(dir, ok.body.url.split('/uploads/')[1]);
   assert.ok(existsSync(file));
 });

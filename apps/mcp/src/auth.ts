@@ -9,8 +9,8 @@ import type { Db, Token } from './core.js';
 export async function authenticate(pools: Db, bearer: string | undefined, ip: string): Promise<Token | null> {
   const token = bearer?.match(/^Bearer (pmcp_[A-Za-z0-9_-]{20,})$/)?.[1];
   if (!token) return null;
-  const [r] = await pools.mcp.begin((q) => q`select id, store_limit from app.mcp_authenticate(${hashToken(token)}, ${ip})`);
-  return r ? { id: r.id, storeLimit: r.store_limit ?? null } : null;
+  const [r] = await pools.mcp.begin((q) => q`select id, store_limit, allow_production from app.mcp_authenticate(${hashToken(token)}, ${ip})`);
+  return r ? { id: r.id, storeLimit: r.store_limit ?? null, allowProduction: !!r.allow_production } : null;
 }
 
 /** Limite simples por token (janela fixa de 1 min) para um agente em laço não derrubar a plataforma. */

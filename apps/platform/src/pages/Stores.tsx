@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, Plus, Rocket, Save, UserPlus } from 'lucide-react';
-import { get, post, put, qs, brl, dt, ago } from '@/lib/api';
+import { ArrowLeft, Copy, Eye, ExternalLink, Plus, RefreshCw, Rocket, Save, UserPlus } from 'lucide-react';
+import { del, get, post, put, qs, brl, dt, ago } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Field, Modal } from '@/ui/kit';
 import { Badge, Delta, Empty, PageHeader, SEVERITY, Stat, STORE_STATUS, STORE_STATUS_LABEL, Table, useLoad } from '@/ui/bits';
@@ -13,7 +13,8 @@ export function StoresList() {
   const l = useLoad(() => get(`/v1/platform/stores${qs({ status })}`), [status], 60_000);
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
-  const [f, setF] = useState({ slug: '', name: '', tenantName: '' });
+  const [f, setF] = useState({ slug: '', name: '', tenantName: '', adminName: '', adminEmail: '', adminPassword: '' });
+  const adminOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.adminEmail) && f.adminPassword.length >= 10;
   const act = useAction(); const toast = useToast();
   return (
     <>
@@ -29,11 +30,17 @@ export function StoresList() {
               <td className="p-3"><Badge cls={STORE_STATUS[s.status]}>{STORE_STATUS_LABEL[s.status]}</Badge></td><td className="p-3 text-xs">{s.domain}</td><td className="p-3">{s.subscription ?? '—'}</td><td className="p-3 text-xs">{dt(s.created_at)}</td>
             </tr>))}
         </Table>)}
-      <Modal open={open} onClose={() => setOpen(false)} title="Nova loja" footer={<><button className="btn-ghost" onClick={() => setOpen(false)}>Cancelar</button><button className="btn" disabled={act.busy || f.slug.length < 3 || f.name.length < 2 || f.tenantName.length < 2} onClick={() => act.run(async () => { const r = await post('/v1/platform/stores', f); toast('Loja criada em desenvolvimento'); setOpen(false); nav(`/lojas/${r.id}`); })}><Save size={14} /> Criar</button></>}>
+      <Modal open={open} onClose={() => setOpen(false)} title="Nova loja" footer={<><button className="btn-ghost" onClick={() => setOpen(false)}>Cancelar</button><button className="btn" disabled={act.busy || f.slug.length < 3 || f.name.length < 2 || f.tenantName.length < 2 || !adminOk} onClick={() => act.run(async () => { const r = await post('/v1/platform/stores', { ...f, adminName: f.adminName.trim() || undefined }); toast(`Loja criada em desenvolvimento. Painel: ${r.domain}/entrar`); setF({ slug: '', name: '', tenantName: '', adminName: '', adminEmail: '', adminPassword: '' }); setOpen(false); nav(`/lojas/${r.id}`); })}><Save size={14} /> Criar</button></>}>
         <div className="space-y-3"><ErrorBox>{act.error}</ErrorBox>
           <Field label="Nome da loja"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
           <Field label="Endereço (slug)" hint="Letras minúsculas, números e hífen. Vira slug.dominio-base."><input className="input" value={f.slug} onChange={(e) => setF({ ...f, slug: e.target.value.toLowerCase() })} /></Field>
-          <Field label="Nome da conta (cliente)"><input className="input" value={f.tenantName} onChange={(e) => setF({ ...f, tenantName: e.target.value })} /></Field></div>
+          <Field label="Nome da conta (cliente)"><input className="input" value={f.tenantName} onChange={(e) => setF({ ...f, tenantName: e.target.value })} /></Field>
+          <div className="border-t border-border pt-3"><p className="mb-2 text-sm font-semibold">Administrador da loja</p><p className="mb-3 text-xs text-muted-foreground">Entra no painel da loja (/entrar) já em desenvolvimento, para montar cardápio, aparência e equipe.</p>
+            <div className="space-y-3">
+              <Field label="Nome (opcional)"><input className="input" value={f.adminName} onChange={(e) => setF({ ...f, adminName: e.target.value })} placeholder="Administrador" /></Field>
+              <Field label="E-mail *"><input className="input" type="email" autoComplete="off" value={f.adminEmail} onChange={(e) => setF({ ...f, adminEmail: e.target.value.trim() })} /></Field>
+              <Field label="Senha *" hint="Mínimo de 10 caracteres."><input className="input" type="password" autoComplete="new-password" value={f.adminPassword} onChange={(e) => setF({ ...f, adminPassword: e.target.value })} /></Field>
+            </div></div></div>
       </Modal>
     </>
   );
@@ -50,6 +57,12 @@ export function StoreDetail() {
   const [statusModal, setStatusModal] = useState<string | null>(null); const [reason, setReason] = useState(''); const [waiver, setWaiver] = useState('');
   const [adminModal, setAdminModal] = useState(false); const [adm, setAdm] = useState({ name: '', email: '', password: '' });
   const [pinModal, setPinModal] = useState(false); const [pin, setPin] = useState({ version: '', channel: 'estavel' });
+  const prev = useLoad(() => get(`/v1/platform/stores/${id}/preview`), [id]); const [prevModal, setPrevModal] = useState(false);
+  // abre a aba já no clique (bloqueadores de pop-up barram janelas abertas depois de um await) e só então aponta para o link
+  const openPreview = () => { const w = window.open('about:blank', '_blank'); if (w) w.opener = null;
+    act.run(async () => { try { const link = prev.data?.link ?? (await post(`/v1/platform/stores/${id}/preview`)).link; await prev.reload(); if (w) w.location.href = link; else window.location.assign(link); } catch (e) { w?.close(); throw e; } }); };
+  const newPreview = () => confirm('Trocar o link? O link atual para de funcionar na hora.') && act.run(async () => { await post(`/v1/platform/stores/${id}/preview`); await prev.reload(); toast('Novo link de prévia criado'); });
+  const offPreview = () => act.run(async () => { await del(`/v1/platform/stores/${id}/preview`); await prev.reload(); toast('Link de prévia desligado'); });
   if (a.error) return <ErrorBox>{a.error}</ErrorBox>;
   if (!a.data) return <Spinner />;
   const d = a.data, s = d.store;
@@ -62,6 +75,7 @@ export function StoreDetail() {
       <PageHeader title={s.name} subtitle={`${s.tenant_name} · ${s.slug}`} actions={<>
         <Badge cls={STORE_STATUS[s.status]}>{STORE_STATUS_LABEL[s.status]}</Badge>
         <select className="input !w-auto" value={days} onChange={(e) => setDays(Number(e.target.value))}>{[1, 7, 14, 30, 90].map((n) => <option key={n} value={n}>{n} dia(s)</option>)}</select>
+        {s.status === 'desenvolvimento' && <><button className="btn" onClick={openPreview} disabled={act.busy}><Eye size={14} /> Pré-visualizar</button><button className="btn-ghost" onClick={() => setPrevModal(true)}><ExternalLink size={14} /> Link de prévia</button></>}
         <button className="btn-ghost" onClick={() => setAdminModal(true)}><UserPlus size={14} /> Administrador</button>
         <button className="btn-ghost" onClick={() => setPinModal(true)}><Rocket size={14} /> Versão</button>
         {allowed.map((t) => <button key={t} className={t === 'arquivada' ? 'btn-danger' : 'btn'} onClick={() => setStatusModal(t)}>{t === 'producao' ? 'Publicar' : t === 'desenvolvimento' ? 'Voltar p/ desenvolvimento' : t === 'suspensa' ? 'Suspender' : 'Arquivar'}</button>)}</>} />
@@ -101,6 +115,19 @@ export function StoreDetail() {
         <div className="space-y-3 text-sm"><ErrorBox>{act.error}</ErrorBox>
           {statusModal === 'producao' && <Field label="Cortesia (só se a conta NÃO tem assinatura ativa ou em teste)" hint="Informe o motivo para publicar sem assinatura."><input className="input" value={waiver} onChange={(e) => setWaiver(e.target.value)} placeholder="Ex.: parceiro piloto" /></Field>}
           {statusModal !== 'producao' && <Field label="Justificativa" hint={statusModal === 'desenvolvimento' ? 'Obrigatória para tirar uma loja do ar.' : undefined}><input className="input" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>}</div>
+      </Modal>
+      <Modal open={prevModal} onClose={() => setPrevModal(false)} title="Link de prévia" footer={<button className="btn" onClick={() => setPrevModal(false)}>Fechar</button>}>
+        <div className="space-y-3 text-sm"><ErrorBox>{act.error}</ErrorBox>
+          <p className="text-muted-foreground">Quem abrir o link vê a vitrine desta loja em desenvolvimento (ótimo para mostrar ao cliente). Pedidos continuam bloqueados até publicar.</p>
+          {prev.data?.link ? <>
+            <code className="block break-all rounded-ui-sm bg-muted p-3 text-xs">{prev.data.link}</code>
+            <div className="flex flex-wrap gap-2">
+              <button className="btn-ghost" onClick={() => navigator.clipboard.writeText(prev.data.link).then(() => toast('Copiado'))}><Copy size={14} /> Copiar</button>
+              <button className="btn-ghost" onClick={newPreview} disabled={act.busy}><RefreshCw size={14} /> Trocar link</button>
+              <button className="btn-danger" onClick={offPreview} disabled={act.busy}>Desligar</button>
+            </div></>
+            : <button className="btn" onClick={() => act.run(async () => { await post(`/v1/platform/stores/${id}/preview`); await prev.reload(); })} disabled={act.busy}><Plus size={14} /> Criar link de prévia</button>}
+        </div>
       </Modal>
       <Modal open={adminModal} onClose={() => setAdminModal(false)} title="Administrador da loja" footer={<><button className="btn-ghost" onClick={() => setAdminModal(false)}>Cancelar</button><button className="btn" disabled={act.busy || adm.password.length < 10} onClick={() => act.run(async () => { const r = await stepUp(() => post(`/v1/platform/stores/${id}/admin-user`, adm)); toast(r.created ? 'Administrador criado' : 'Senha redefinida'); setAdminModal(false); setAdm({ name: '', email: '', password: '' }); })}>Salvar</button></>}>
         <div className="space-y-3 text-sm"><ErrorBox>{act.error}</ErrorBox><p className="text-xs text-muted-foreground">Cria o primeiro administrador. Se o e-mail já existir, a senha é <b>redefinida</b> e as sessões dele são encerradas.</p>

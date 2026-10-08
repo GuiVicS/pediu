@@ -1,5 +1,6 @@
 import type { Q } from '@pediu/db';
-import { mcpCanWrite, type StoreStatus } from '@pediu/shared';
+import { randomBytes } from 'node:crypto';
+import { hashPassword, mcpCanWrite, previewLink, type StoreStatus } from '@pediu/shared';
 import { McpError, notFound } from './errors.js';
 import { actorOf, inStore, record, type Db, type StoreRef, type Token } from './core.js';
 
@@ -13,7 +14,7 @@ export async function listStores(pools: Db, t: Token, filter?: { status?: StoreS
       (select status from subscriptions x where x.tenant_id = t.id order by x.created_at desc limit 1) as assinatura
     from stores s join tenants t on t.id = s.tenant_id
     where (${filter?.status ?? null}::text is null or s.status::text = ${filter?.status ?? null}) order by s.created_at desc limit 500`);
-  return rows.filter((r) => !t.storeLimit || t.storeLimit.includes(r.id)).map((r) => ({ ...r, editavel: mcpCanWrite(r.status) }));
+  return rows.filter((r) => !t.storeLimit || t.storeLimit.includes(r.id)).map((r) => ({ ...r, editavel: mcpCanWrite(r.status, t.allowProduction) }));
 }
 
 export async function listSubscriptions(pools: Db, t: Token, tenantId?: string) {
@@ -33,7 +34,7 @@ export function viewStore(pools: Db, t: Token, storeId: string) {
     const [theme] = await q`select data from store_themes where store_id = ${s.id}`;
     const [settings] = await q`select data from store_settings where store_id = ${s.id}`;
     return {
-      loja: { id: s.id, slug: s.slug, nome: s.name, status: s.status, editavel: mcpCanWrite(s.status) },
+      loja: { id: s.id, slug: s.slug, nome: s.name, status: s.status, editavel: mcpCanWrite(s.status, t.allowProduction) },
       tema: theme?.data ?? {}, configuracoes: settings?.data ?? {},
       categorias: await q`select id, name as nome, image_url, sort as ordem, active as ativa, print_zone_id from categories where store_id = ${s.id} order by sort`,
       produtos: await q`select id, category_id, name as nome, description as descricao, price as preco, image_url, active as ativo, available as disponivel, sort as ordem,
@@ -50,10 +51,14 @@ export function viewStore(pools: Db, t: Token, storeId: string) {
   });
 }
 
-// ---------- escrita (só em desenvolvimento) ----------
-export async function createStore(pools: Db, t: Token, input: { slug: string; name: string; tenantId?: string; tenantName?: string; domain: string }) {
+// ---------- escrita (desenvolvimento; produção só com token liberado) ----------
+export interface NewAdmin { name: string; email: string; password: string }
+/** domain: domínio oficial (vira o subdomínio da loja); panelDomain: domínio pelo qual o painel abre hoje (PREVIEW_DOMAIN). */
+export async function createStore(pools: Db, t: Token, input: { slug: string; name: string; tenantId?: string; tenantName?: string; domain: string; panelDomain?: string; admin: NewAdmin }) {
   if (t.storeLimit) throw new McpError('Este token é limitado a lojas específicas e não pode criar lojas novas.');
   if (!input.tenantId && !input.tenantName) throw new McpError('Informe tenantId (conta existente) ou tenantName (para criar a conta).');
+  const adminHash = await hashPassword(input.admin.password);
+  const adminEmail = input.admin.email.toLowerCase();
   try {
     return await pools.mcp.begin(async (q) => {
       let tenantId = input.tenantId;
@@ -67,11 +72,17 @@ export async function createStore(pools: Db, t: Token, input: { slug: string; na
       await q`insert into store_domains (tenant_id, store_id, hostname, kind, verified_at) values (${tenantId}, ${store.id}, ${host}, 'subdomain', now())`;
       await q`insert into store_themes (store_id, tenant_id) values (${store.id}, ${tenantId})`;
       await q`insert into store_settings (store_id, tenant_id) values (${store.id}, ${tenantId})`;
-      await record(q, t, store, 'loja', store.id, 'create', null, { slug: input.slug, name: input.name });
-      return { id: store.id, tenantId, slug: store.slug, status: store.status, dominio: host, editavel: true };
+      // administrador da loja: entra no painel (/entrar) já em desenvolvimento
+      await q`insert into staff_users (tenant_id, store_id, email, name, role, password_hash, active) values (${tenantId}, ${store.id}, ${adminEmail}, ${input.admin.name}, 'admin', ${adminHash}, true)`;
+      await record(q, t, store, 'loja', store.id, 'create', null, { slug: input.slug, name: input.name, admin: adminEmail });
+      return { id: store.id, tenantId, slug: store.slug, status: store.status, dominio: host, editavel: true, administrador: { email: adminEmail, painel: `https://${input.slug}.${input.panelDomain ?? input.domain}/entrar` } };
     });
   } catch (e) {
-    if ((e as { code?: string }).code === '23505') throw new McpError('Já existe uma loja com este endereço (slug).');
+    if ((e as { code?: string; constraint_name?: string }).code === '23505') {
+      const x = e as { constraint_name?: string; constraint?: string; detail?: string; message?: string };
+      if (/staff_users|\(tenant_id, email\)/.test(`${x.constraint_name ?? ''} ${x.constraint ?? ''} ${x.detail ?? ''} ${x.message ?? ''}`)) throw new McpError('Este e-mail de administrador já está em uso nesta conta.');
+      throw new McpError('Já existe uma loja com este endereço (slug).');
+    }
     throw e;
   }
 }
@@ -98,6 +109,22 @@ export function updateTheme(pools: Db, t: Token, storeId: string, patch: Record<
     const [after] = await q`select data from store_themes where store_id = ${s.id}`;
     await record(q, t, s, 'tema', s.id, 'update', cur?.data ?? {}, after?.data ?? {});
     return { tema: after?.data };
+  });
+}
+
+// ---------- link secreto de prévia (só em desenvolvimento) ----------
+/** Devolve o link atual (cria se não houver); novo=true troca o código e o link anterior para de funcionar. */
+export function previewLinkFor(pools: Db, t: Token, storeId: string, o: { novo?: boolean; domain: string }) {
+  return inStore(pools, t, storeId, 'write', async (q, s) => {
+    if (s.status !== 'desenvolvimento') throw new McpError(`A loja "${s.name}" já está ${s.status === 'producao' ? 'no ar' : s.status}: prévia só existe para lojas em desenvolvimento.`);
+    const [cur] = await q`select preview_token from stores where id = ${s.id}`;
+    let token = cur?.preview_token as string | null;
+    if (!token || o.novo) {
+      token = randomBytes(24).toString('base64url');
+      await q`update stores set preview_token = ${token} where id = ${s.id}`;
+      await q`insert into audit_logs (actor_kind, actor_id, tenant_id, store_id, action) values ('mcp', ${t.id}, ${s.tenant_id}, ${s.id}, 'store.preview_link_created')`;
+    }
+    return { link: previewLink(s.slug, o.domain, token), observacao: 'Quem abrir este link vê a vitrine da loja. Pedidos continuam bloqueados até publicar. Use novo=true para trocar o link.' };
   });
 }
 
@@ -129,6 +156,7 @@ export const validateStore = (pools: Db, t: Token, storeId: string) => inStore(p
 
 export function requestPublication(pools: Db, t: Token, storeId: string, note?: string) {
   return inStore(pools, t, storeId, 'write', async (q, s) => {
+    if (s.status !== 'desenvolvimento') throw new McpError(`A loja "${s.name}" já está no ar: não há o que publicar.`);
     const c = await checklist(q, s);
     if (!c.ok) throw new McpError(`A loja ainda tem pendências obrigatórias: ${c.issues.filter((i) => i.nivel === 'erro').map((i) => i.mensagem).join(' ')}`);
     const dup = await q`select id from publication_requests where store_id = ${s.id} and status = 'pendente'`;

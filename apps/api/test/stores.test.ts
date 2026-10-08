@@ -1,13 +1,14 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { client, createAdmin, fullLogin, setup, stepUp, type Client, type Env } from './helpers.js';
+import { hashToken } from '@pediu/shared';
+import { client, createAdmin, fullLogin, PASSWORD, setup, stepUp, type Client, type Env } from './helpers.js';
 
 let env: Env; let c: Client;
 const EMAIL = 'loja@teste.com';
 before(async () => { env = await setup(); await createAdmin(env, EMAIL); c = client(env); await fullLogin(env, c, EMAIL); });
 after(() => env.close());
 
-const novaLoja = async (slug: string, extra: object = {}) => (await c.post('/v1/platform/stores', { slug, name: `Loja ${slug}`, tenantName: `Conta ${slug}`, ...extra }));
+const novaLoja = async (slug: string, extra: object = {}) => (await c.post('/v1/platform/stores', { slug, name: `Loja ${slug}`, tenantName: `Conta ${slug}`, adminEmail: `admin@${slug}.test`, adminPassword: PASSWORD, ...extra }));
 
 test('cria loja em desenvolvimento com subdomínio, tema e configurações vazios', async () => {
   const r = await novaLoja('forno-fogo');
@@ -120,4 +121,78 @@ test('checklist de funcionalidades: exige step-up, bloqueia indisponível e audi
   const audit = await env.pools.platform.begin((q) => q`select meta from audit_logs where store_id = ${id} and action = 'store.feature'`);
   assert.equal(audit.length, 1);
   assert.equal(audit[0]!.meta.feature, 'whatsapp_support');
+});
+
+test('criar loja exige o administrador, que entra no painel ainda em desenvolvimento', async () => {
+  const sem = await c.post('/v1/platform/stores', { slug: 'sem-admin', name: 'Sem admin', tenantName: 'Conta X' });
+  assert.equal(sem.status, 400);
+  assert.equal((await novaLoja('senha-curta', { adminPassword: 'curta' })).status, 400);
+  const r = await novaLoja('com-admin', { adminEmail: 'Dono@Com-Admin.test', adminName: 'Dono' });
+  assert.equal(r.status, 201); assert.equal(r.body.adminEmail, 'dono@com-admin.test');
+  const staff = client(env);
+  const login = await staff.post('/v1/staff/login', { store: 'com-admin', email: 'dono@com-admin.test', password: PASSWORD });
+  assert.equal(login.status, 200); assert.equal(login.body.role, 'admin');
+  const me = await staff.get('/v1/staff/me');
+  assert.equal(me.status, 200); assert.equal(me.body.store.status, 'desenvolvimento');
+  // tudo na mesma transação: e-mail repetido na mesma conta não deixa loja órfã
+  const conta = r.body.tenantId as string;
+  const dup = await novaLoja('outra-da-conta', { tenantId: conta, tenantName: undefined, adminEmail: 'dono@com-admin.test' });
+  assert.equal(dup.status, 409); assert.equal(dup.body.error.code, 'admin_email_taken');
+  const [n] = await env.pools.platform.begin((q) => q`select count(*)::int as n from stores where slug = 'outra-da-conta'`);
+  assert.equal(n!.n, 0);
+});
+
+test('link de prévia: só quem tem o código vê a loja em desenvolvimento; pedidos continuam bloqueados', async () => {
+  const { body: s } = await novaLoja('previa-loja');
+  const publico = client(env);
+  assert.equal((await publico.get('/v1/store/previa-loja')).status, 404);
+  assert.equal((await c.get(`/v1/platform/stores/${s.id}/preview`)).body.link, null);
+
+  const criado = await c.post(`/v1/platform/stores/${s.id}/preview`);
+  assert.equal(criado.status, 200);
+  const token = new URL(criado.body.link).searchParams.get('previa')!;
+  assert.match(criado.body.link, /^https:\/\/previa-loja\.pediu\.test\/\?previa=/);
+  assert.equal((await c.get(`/v1/platform/stores/${s.id}/preview`)).body.link, criado.body.link);
+
+  const ver = (tk: string) => publico.call('GET', '/v1/store/previa-loja', undefined, { cookie: `pediu_previa=${tk}` });
+  assert.equal((await ver(token)).status, 200);
+  assert.equal((await ver('x'.repeat(32))).status, 404);
+  // pedido continua bloqueado mesmo com a prévia
+  const pedido = await publico.call('POST', '/v1/store/previa-loja/orders', { type: 'retirada', items: [] }, { cookie: `pediu_previa=${token}` });
+  assert.notEqual(pedido.status, 201);
+
+  // trocar o link invalida o anterior; apagar desliga
+  const novo = await c.post(`/v1/platform/stores/${s.id}/preview`);
+  assert.notEqual(novo.body.link, criado.body.link);
+  assert.equal((await ver(token)).status, 404);
+  assert.equal((await ver(new URL(novo.body.link).searchParams.get('previa')!)).status, 200);
+  assert.equal((await c.del(`/v1/platform/stores/${s.id}/preview`)).status, 200);
+  assert.equal((await ver(new URL(novo.body.link).searchParams.get('previa')!)).status, 404);
+
+  // loja no ar não tem prévia (já é pública)
+  await env.pools.platform.begin((q) => q`update stores set status = 'producao' where id = ${s.id}`);
+  assert.equal((await c.post(`/v1/platform/stores/${s.id}/preview`)).status, 409);
+  const audit = await env.pools.platform.begin((q) => q`select action from audit_logs where store_id = ${s.id} and action like 'store.preview%' order by id`);
+  assert.deepEqual(audit.map((a) => a.action), ['store.preview_link_created', 'store.preview_link_created', 'store.preview_link_revoked']);
+});
+
+test('token do MCP: permissão de produção na criação e liga/desliga com step-up', async () => {
+  await stepUp(env, c, EMAIL);
+  const t1 = await c.post('/v1/platform/mcp-tokens', { name: 'Só dev' });
+  const t2 = await c.post('/v1/platform/mcp-tokens', { name: 'Produção', allowProduction: true });
+  assert.equal(t1.status, 201); assert.equal(t2.status, 201);
+  const lista = (await c.get('/v1/platform/mcp-tokens')).body.tokens;
+  assert.equal(lista.find((x: any) => x.id === t1.body.id).allow_production, false);
+  assert.equal(lista.find((x: any) => x.id === t2.body.id).allow_production, true);
+  const patch = (id: string, v: boolean) => env.app.inject({ method: 'PATCH', url: `/v1/platform/mcp-tokens/${id}`, payload: { allowProduction: v }, headers: { cookie: c.cookie } });
+  const ligou = await patch(t1.body.id, true);
+  assert.equal(ligou.statusCode, 200);
+  const [row] = await env.pools.platform.begin((q) => q`select allow_production from mcp_tokens where id = ${t1.body.id}`);
+  assert.equal(row!.allow_production, true);
+  // a autenticação do MCP (função usada pelo servidor MCP) devolve a permissão de cada token
+  const autentica = async (tk: string) => (await env.pools.mcp.begin((q) => q`select allow_production from app.mcp_authenticate(${hashToken(tk)}, '')`))[0]!.allow_production;
+  assert.equal(await autentica(t1.body.token), true);
+  assert.equal(await autentica(t2.body.token), true);
+  assert.equal((await patch(t2.body.id, false)).statusCode, 200);
+  assert.equal(await autentica(t2.body.token), false);
 });

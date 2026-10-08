@@ -1,6 +1,6 @@
 export class ApiError extends Error { constructor(readonly status: number, readonly code: string, message: string) { super(message); } }
 
-export async function api<T = any>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
+export async function api<T = any>(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T> {
   let res: Response;
   try { res = await fetch(path, { method, credentials: 'same-origin', headers: body !== undefined ? { 'content-type': 'application/json' } : undefined, body: body === undefined ? undefined : JSON.stringify(body) }); }
   catch { throw new ApiError(0, 'network', 'Sem conexão com o servidor.'); }
@@ -15,6 +15,7 @@ export async function api<T = any>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', pa
 export const get = <T = any,>(p: string) => api<T>('GET', p);
 export const post = <T = any,>(p: string, b?: unknown) => api<T>('POST', p, b ?? {});
 export const put = <T = any,>(p: string, b: unknown) => api<T>('PUT', p, b);
+export const patch = <T = any,>(p: string, b: unknown) => api<T>('PATCH', p, b);
 export const del = <T = any,>(p: string) => api<T>('DELETE', p);
 export const qs = (o: Record<string, string | number | undefined | null>) => { const p = new URLSearchParams(); for (const [k, v] of Object.entries(o)) if (v !== undefined && v !== null && v !== '') p.set(k, String(v)); const s = p.toString(); return s ? `?${s}` : ''; };
 export const brl = (cents: number) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });

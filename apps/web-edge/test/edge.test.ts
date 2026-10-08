@@ -7,11 +7,11 @@ import { appForPath, buildEdge, manifestFor, PWA_APPS, type Resolved } from '../
 
 const store: Resolved = { storeId: 's1', slug: 'burger-lab', name: 'Burger Lab', status: 'producao', version: null, source: 'builtin', supportEnded: false, themeColor: '#c0392b', iconUrl: null, description: null, title: null };
 
-function app() {
+function app(s: Resolved = store) {
   const dir = mkdtempSync(join(tmpdir(), 'edge-'));
   mkdirSync(join(dir, 'web', 'builtin'), { recursive: true });
   writeFileSync(join(dir, 'web', 'builtin', 'index.html'), '<!doctype html><html><head><!--pediu-head--></head><body></body></html>');
-  const fetchImpl = (async () => new Response(JSON.stringify(store), { status: 200 })) as typeof fetch;
+  const fetchImpl = (async () => new Response(JSON.stringify(s), { status: 200 })) as typeof fetch;
   return buildEdge({ apiUrl: 'http://api.test', edgeSecret: 's', builtinDir: dir, cacheDir: join(dir, 'cache'), fetchImpl } as never);
 }
 const get = (a: ReturnType<typeof app>, url: string) => a.inject({ method: 'GET', url, headers: { host: 'burger-lab.pediu.test' } });
@@ -44,4 +44,19 @@ test('o edge serve o manifesto certo e injeta o link no HTML de cada rota', asyn
   assert.match((await get(a, '/painel/produtos')).body, /manifest\.webmanifest\?app=painel/);
   const home = (await get(a, '/')).body;
   assert.match(home, /<link rel="manifest" href="\/manifest\.webmanifest">/); assert.doesNotMatch(home, /\?app=/);
+});
+
+test('link de prévia: em desenvolvimento grava o cookie e tira o código da URL; loja no ar ignora', async () => {
+  const dev = app({ ...store, status: 'desenvolvimento' });
+  const code = 'a'.repeat(32);
+  const r = await get(dev, `/cardapio?x=1&previa=${code}`);
+  assert.equal(r.statusCode, 302); assert.equal(r.headers.location, '/cardapio?x=1');
+  assert.match(String(r.headers['set-cookie']), new RegExp(`^pediu_previa=${code}; Path=/; .*HttpOnly; Secure; SameSite=Lax`));
+  // código malformado: só limpa a URL, sem cookie
+  const ruim = await get(dev, '/?previa=<script>');
+  assert.equal(ruim.statusCode, 302); assert.equal(ruim.headers.location, '/'); assert.equal(ruim.headers['set-cookie'], undefined);
+  // prévia não vai para buscadores
+  assert.equal((await get(dev, '/')).headers['x-robots-tag'], 'noindex');
+  const prod = await get(app(), `/?previa=${code}`);
+  assert.equal(prod.statusCode, 200); assert.equal(prod.headers['set-cookie'], undefined); assert.equal(prod.headers['x-robots-tag'], undefined);
 });

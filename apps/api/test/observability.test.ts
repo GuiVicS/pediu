@@ -328,7 +328,7 @@ test('atividade da loja: logs + auditoria + eventos de pedido numa linha do temp
 
 test('log do super admin: ações com e-mail de quem fez, filtros e paginação; segredos nunca aparecem', async () => {
   await session();
-  await c.post('/v1/platform/stores', { slug: 'criada-audit', name: 'Criada', tenantName: 'Conta Audit' });
+  await c.post('/v1/platform/stores', { slug: 'criada-audit', name: 'Criada', tenantName: 'Conta Audit', adminEmail: 'admin@criada-audit.test', adminPassword: 'senha-bem-longa-123' });
   const r = await c.get('/v1/platform/audit?actor=superadmin&limit=100');
   assert.equal(r.status, 200);
   assert.ok(r.body.entries.every((e: any) => e.actor_kind === 'superadmin'));
