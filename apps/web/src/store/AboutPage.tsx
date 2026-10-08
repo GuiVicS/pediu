@@ -8,7 +8,7 @@ export default function AboutPage() {
   const { theme, store, status, menu } = useStore();
   const zones = menu.zones, pays = menu.payments;
   const today = new Date().getDay();
-  const card = 'rounded-t border border-t-border bg-t-card p-4';
+  const card = 'rounded-theme border border-t-border bg-t-card p-4';
   return (
     <div className="mx-auto max-w-2xl space-y-4 px-3 pt-4 md:pt-8">
       <div className={`${card} flex items-center gap-4`}>

@@ -40,17 +40,17 @@ export default function OrdersPage() {
     <div className="mx-auto max-w-2xl px-3 pt-4 md:pt-8">
       <h1 className="mb-4 flex items-center gap-2 text-2xl font-bold"><ClipboardList size={24} /> Meus pedidos</h1>
       {ready && !customer && (
-        <DLink to="/conta" className="mb-3 block rounded-t border border-t-border bg-t-card p-3 text-center text-sm text-t-muted-fg">
+        <DLink to="/conta" className="mb-3 block rounded-theme border border-t-border bg-t-card p-3 text-center text-sm text-t-muted-fg">
           <b className="text-t-primary">Entre na sua conta</b> para ver todos os seus pedidos, em qualquer aparelho.
         </DLink>
       )}
-      {loaded && orders.length === 0 && <p className="rounded-t border border-t-border bg-t-card p-6 text-center text-sm text-t-muted-fg">Você ainda não fez pedidos neste aparelho. Faça um pedido e acompanhe o status aqui.</p>}
+      {loaded && orders.length === 0 && <p className="rounded-theme border border-t-border bg-t-card p-6 text-center text-sm text-t-muted-fg">Você ainda não fez pedidos neste aparelho. Faça um pedido e acompanhe o status aqui.</p>}
       <div className="space-y-3">
         {orders.map((o) => {
           const steps = o.type === 'delivery' ? STEPS_DELIVERY : STEPS_LOCAL;
           const step = steps.indexOf(o.status);
           return (
-            <div key={o.token} className="rounded-t border border-t-border bg-t-card p-4">
+            <div key={o.token} className="rounded-theme border border-t-border bg-t-card p-4">
               <div className="flex items-center justify-between"><div className="font-bold">Pedido #{o.number}</div><span className="flex items-center gap-1 text-xs text-t-muted-fg"><Clock size={12} />{ago(o.created_at)}</span></div>
               {o.status === 'cancelado' ? <div className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-t-danger"><XCircle size={16} /> Pedido cancelado</div>
                 : o.status === 'aguardando' ? <div className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-t-primary"><QrCode size={16} /> Aguardando o pagamento</div>

@@ -30,7 +30,7 @@ export default function HomePage() {
         <div className="min-w-0 space-y-6">
           <div>
             <BannerCarousel />
-            <div className="relative z-10 mx-3 -mt-6 flex items-center gap-3 rounded-t border border-t-border bg-t-card p-3 shadow-lg md:mx-4">
+            <div className="relative z-10 mx-3 -mt-6 flex items-center gap-3 rounded-theme border border-t-border bg-t-card p-3 shadow-lg md:mx-4">
               <Img src={theme.profileUrl || theme.logoUrl} alt={store.name} className="h-16 w-16 shrink-0 rounded-full border-2 border-t-bg" />
               <div className="min-w-0 flex-1">
                 <h1 className="truncate text-lg font-bold leading-tight">{store.name}</h1>
@@ -61,7 +61,7 @@ export default function HomePage() {
             <div className="relative mb-4">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-t-muted-fg" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Pesquisar produto"
-                className="h-11 w-full rounded-t border border-t-border bg-t-card pl-9 pr-3 text-sm outline-none focus:border-t-primary" />
+                className="h-11 w-full rounded-theme border border-t-border bg-t-card pl-9 pr-3 text-sm outline-none focus:border-t-primary" />
             </div>
             {!ready ? <p className="py-8 text-center text-sm text-t-muted-fg">Carregando…</p>
               : q ? (
@@ -71,7 +71,7 @@ export default function HomePage() {
                 <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
                   {categories.map((c) => (
                     <button key={c.id} onClick={() => nav(`/categoria/${c.id}`)}
-                      className="group flex min-h-[96px] items-center justify-between gap-2 overflow-hidden rounded-t border border-t-border bg-t-card p-3 text-left transition hover:shadow-md">
+                      className="group flex min-h-[96px] items-center justify-between gap-2 overflow-hidden rounded-theme border border-t-border bg-t-card p-3 text-left transition hover:shadow-md">
                       <span className="text-base font-semibold leading-tight">{c.name}</span>
                       <Img src={c.imageUrl} alt={c.name} fit={c.imageFit} className="h-16 w-16 shrink-0 rounded-xl transition group-hover:scale-105" />
                     </button>

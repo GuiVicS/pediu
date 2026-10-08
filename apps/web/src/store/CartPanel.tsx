@@ -9,7 +9,7 @@ export function CartPanel({ flat, emptyText }: { flat?: boolean; emptyText?: str
   const cart = useCart();
   const { theme, store, status, unpublished } = useStore();
   const below = cart.subtotal < store.minOrder;
-  const wrap = cx('rounded-t border border-t-border bg-t-card p-5', !flat && 'sticky top-24 shadow-sm');
+  const wrap = cx('rounded-theme border border-t-border bg-t-card p-5', !flat && 'sticky top-24 shadow-sm');
 
   if (cart.lines.length === 0) {
     return (
@@ -25,7 +25,7 @@ export function CartPanel({ flat, emptyText }: { flat?: boolean; emptyText?: str
       <h3 className="mb-3 flex items-center gap-2 font-bold"><ShoppingBag size={18} className="text-t-primary" /> Sua sacola</h3>
       <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
         {cart.lines.map((l) => (
-          <div key={l.key} className="flex gap-3 rounded-t bg-t-muted/50 p-2.5">
+          <div key={l.key} className="flex gap-3 rounded-theme bg-t-muted/50 p-2.5">
             <Img src={l.imageUrl} alt={l.name} fit={l.imageFit} className="h-14 w-14 shrink-0 rounded-lg" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold">{l.name}</div>
@@ -53,7 +53,7 @@ export function CartPanel({ flat, emptyText }: { flat?: boolean; emptyText?: str
       <button
         disabled={below || !status.open || unpublished}
         onClick={() => window.dispatchEvent(new Event('open-checkout'))}
-        className="mt-3 w-full rounded-t bg-t-primary py-3 font-semibold text-t-primary-fg transition hover:opacity-90 disabled:opacity-40"
+        className="mt-3 w-full rounded-theme bg-t-primary py-3 font-semibold text-t-primary-fg transition hover:opacity-90 disabled:opacity-40"
       >
         <span className="flex items-center justify-center gap-2"><CreditCard size={18} /> Finalizar pedido</span>
       </button>

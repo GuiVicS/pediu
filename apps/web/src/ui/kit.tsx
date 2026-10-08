@@ -12,7 +12,7 @@ export function Modal({ open, onClose, title, children, footer, wide, themed }: 
   return (
     <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4" onMouseDown={onClose}>
       <div
-        className={cx('flex max-h-[92vh] w-full flex-col overflow-hidden shadow-2xl', themed ? 'rounded-t-3xl bg-t-card font-t text-t-fg sm:rounded-t' : 'rounded-t-2xl bg-card text-foreground sm:rounded-ui', wide ? 'sm:max-w-2xl' : 'sm:max-w-lg')}
+        className={cx('flex max-h-[92vh] w-full flex-col overflow-hidden shadow-2xl', themed ? 'rounded-t-3xl bg-t-card font-t text-t-fg sm:rounded-theme' : 'rounded-t-2xl bg-card text-foreground sm:rounded-ui', wide ? 'sm:max-w-2xl' : 'sm:max-w-lg')}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className={cx('flex items-center justify-between border-b px-5 py-3', themed ? 'border-t-border' : 'border-border')}>
