@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Check, Copy, ExternalLink, KeyRound, Link2, Loader2, Plus, Rocket, Save, Trash2, Zap } from 'lucide-react';
-import { del, get, post, put, brl, dt } from '@/lib/api';
+import { del, get, patch, post, put, brl, dt } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Field, Modal, Toggle } from '@/ui/kit';
 import { Badge, Empty, PageHeader, Stat, Table, useLoad } from '@/ui/bits';
@@ -132,22 +132,26 @@ export function IfoodPlatform() {
 export function McpTokens() {
   const l = useLoad(() => get('/v1/platform/mcp-tokens'), [], 60_000);
   const { stepUp } = useAuth(); const act = useAction(); const toast = useToast();
-  const [form, setForm] = useState<{ name: string; days: number } | null>(null); const [made, setMade] = useState<{ token: string; expiresAt: string } | null>(null);
+  const [form, setForm] = useState<{ name: string; days: number; prod: boolean } | null>(null); const [made, setMade] = useState<{ token: string; expiresAt: string; allowProduction?: boolean } | null>(null);
+  const setProd = (t: any, v: boolean) => (!v || confirm(`Liberar "${t.name}" para alterar lojas EM PRODUÇÃO? Mudanças aparecem na hora para os clientes.`)) && act.run(async () => { await stepUp(() => patch(`/v1/platform/mcp-tokens/${t.id}`, { allowProduction: v })); toast(v ? 'Token liberado para produção' : 'Token só em desenvolvimento'); await l.reload(); });
   if (!l.data) return <Spinner />;
   return (
     <>
-      <PageHeader title="Tokens do MCP" subtitle="Quem pode criar e personalizar lojas por agente de IA. O token aparece uma única vez." actions={<button className="btn" onClick={() => setForm({ name: '', days: 90 })}><Plus size={14} /> Novo token</button>} />
+      <PageHeader title="Tokens do MCP" subtitle="Quem pode criar e personalizar lojas por agente de IA. O token aparece uma única vez." actions={<button className="btn" onClick={() => setForm({ name: '', days: 90, prod: false })}><Plus size={14} /> Novo token</button>} />
       <ErrorBox>{act.error ?? l.error}</ErrorBox>
-      <div className="mb-4 rounded-ui-sm bg-muted/60 p-3 text-xs text-muted-foreground">O MCP só altera lojas em <b>desenvolvimento</b>; em produção só lê. Ele nunca publica: pede, e você aprova em <b>Publicações</b>. Endereço do servidor MCP: configure no seu domínio (ex.: <code>https://mcp.seudominio.com/mcp</code>).</div>
-      {l.data.tokens.length === 0 ? <Empty>Nenhum token.</Empty> : <Table head={['Nome', 'Final', 'Validade', 'Último uso', 'Situação', '']}>{l.data.tokens.map((t: any) => { const expired = new Date(t.expires_at) < new Date(); return (
+      <div className="mb-4 rounded-ui-sm bg-muted/60 p-3 text-xs text-muted-foreground">O MCP altera lojas em <b>desenvolvimento</b>; em <b>produção</b>, só os tokens com <b>Produção</b> ligado (os demais só leem). Ele nunca muda o status nem publica: pede, e você aprova em <b>Publicações</b>. Endereço do servidor MCP: configure no seu domínio (ex.: <code>https://mcp.seudominio.com/mcp</code>).</div>
+      {l.data.tokens.length === 0 ? <Empty>Nenhum token.</Empty> : <Table head={['Nome', 'Final', 'Validade', 'Último uso', 'Produção', 'Situação', '']}>{l.data.tokens.map((t: any) => { const expired = new Date(t.expires_at) < new Date(); return (
         <tr key={t.id}><td className="p-3 font-medium">{t.name}{t.store_limit && <Badge> {t.store_limit.length} loja(s)</Badge>}</td><td className="p-3 font-mono text-xs">…{t.hint}</td><td className="p-3 text-xs">{dt(t.expires_at)}</td><td className="p-3 text-xs">{t.last_used_at ? `${dt(t.last_used_at)} · ${t.last_ip ?? ''}` : 'nunca'}</td>
+          <td className="p-3">{t.revoked_at ? <span className="text-xs text-muted-foreground">—</span> : <Toggle checked={!!t.allow_production} onChange={(v) => setProd(t, v)} label={t.allow_production ? 'pode alterar' : 'só lê'} />}</td>
           <td className="p-3">{t.revoked_at ? <Badge cls="bg-slate-200 text-slate-600">revogado</Badge> : expired ? <Badge cls="bg-amber-100 text-amber-700">vencido</Badge> : <Badge cls="bg-green-100 text-green-700">ativo</Badge>}</td>
           <td className="p-3">{!t.revoked_at && <button className="btn-danger !px-2 !py-1 text-xs" onClick={() => confirm(`Revogar "${t.name}"? Vale na hora.`) && act.run(async () => { await stepUp(() => del(`/v1/platform/mcp-tokens/${t.id}`)); toast('Token revogado'); await l.reload(); })}><Trash2 size={12} /> Revogar</button>}</td></tr>); })}</Table>}
-      <Modal open={!!form} onClose={() => setForm(null)} title="Novo token do MCP" footer={<><button className="btn-ghost" onClick={() => setForm(null)}>Cancelar</button><button className="btn" disabled={act.busy || !form?.name.trim()} onClick={() => act.run(async () => { const r = await stepUp(() => post('/v1/platform/mcp-tokens', { name: form!.name, expiresInDays: form!.days })); setMade(r); setForm(null); await l.reload(); })}>Criar</button></>}>
-        {form && <div className="space-y-3 text-sm"><ErrorBox>{act.error}</ErrorBox><Field label="Nome (onde será usado)"><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Claude Desktop" /></Field><Field label="Validade (dias)"><input className="input" type="number" min={1} max={365} value={form.days} onChange={(e) => setForm({ ...form, days: Number(e.target.value) })} /></Field></div>}
+      <Modal open={!!form} onClose={() => setForm(null)} title="Novo token do MCP" footer={<><button className="btn-ghost" onClick={() => setForm(null)}>Cancelar</button><button className="btn" disabled={act.busy || !form?.name.trim()} onClick={() => act.run(async () => { const r = await stepUp(() => post('/v1/platform/mcp-tokens', { name: form!.name, expiresInDays: form!.days, allowProduction: form!.prod })); setMade(r); setForm(null); await l.reload(); })}>Criar</button></>}>
+        {form && <div className="space-y-3 text-sm"><ErrorBox>{act.error}</ErrorBox><Field label="Nome (onde será usado)"><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Claude Desktop" /></Field><Field label="Validade (dias)"><input className="input" type="number" min={1} max={365} value={form.days} onChange={(e) => setForm({ ...form, days: Number(e.target.value) })} /></Field>
+          <Toggle checked={form.prod} onChange={(v) => setForm({ ...form, prod: v })} label="Pode alterar lojas em produção" />
+          {form.prod && <p className="rounded-ui-sm bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">As alterações deste token aparecem na hora para os clientes das lojas no ar. Status e publicação continuam só com você.</p>}</div>}
       </Modal>
       <Modal open={!!made} onClose={() => setMade(null)} title="Copie o token agora" footer={<button className="btn" onClick={() => setMade(null)}>Já copiei</button>}>
-        {made && <div className="space-y-3 text-sm"><p className="rounded-ui-sm bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-300">Este token <b>não aparece de novo</b>. Quem tiver o token cria e edita lojas em desenvolvimento.</p><code className="block break-all rounded-ui-sm bg-muted p-3 text-xs">{made.token}</code><button className="btn-ghost w-full" onClick={() => navigator.clipboard.writeText(made.token).then(() => toast('Copiado'))}><Copy size={14} /> Copiar</button><p className="text-xs text-muted-foreground">Vence em {dt(made.expiresAt)}.</p></div>}
+        {made && <div className="space-y-3 text-sm"><p className="rounded-ui-sm bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-300">Este token <b>não aparece de novo</b>. Quem tiver o token cria e edita lojas{made.allowProduction ? ', inclusive em produção' : ' em desenvolvimento'}.</p><code className="block break-all rounded-ui-sm bg-muted p-3 text-xs">{made.token}</code><button className="btn-ghost w-full" onClick={() => navigator.clipboard.writeText(made.token).then(() => toast('Copiado'))}><Copy size={14} /> Copiar</button><p className="text-xs text-muted-foreground">Vence em {dt(made.expiresAt)}.</p></div>}
       </Modal>
     </>
   );

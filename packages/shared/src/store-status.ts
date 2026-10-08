@@ -1,11 +1,12 @@
 /**
- * Ciclo de vida da loja. Só `desenvolvimento` aceita escrita do MCP; em `producao` o MCP só lê.
+ * Ciclo de vida da loja. `desenvolvimento` aceita escrita do MCP; `producao` só com token que tenha permissão de produção
+ * (marcada pelo super admin); suspensa e arquivada nunca. O MCP nunca muda o status.
  * A regra vale em três camadas: lista de ferramentas, serviço e política RLS do banco (ver migrations).
  */
 export const STORE_STATUS = ['desenvolvimento', 'producao', 'suspensa', 'arquivada'] as const;
 export type StoreStatus = (typeof STORE_STATUS)[number];
 
-export const mcpCanWrite = (s: StoreStatus) => s === 'desenvolvimento';
+export const mcpCanWrite = (s: StoreStatus, allowProduction = false) => s === 'desenvolvimento' || (allowProduction && s === 'producao');
 export const mcpCanRead = (s: StoreStatus) => s !== 'arquivada';
 
 export type Actor =
@@ -47,3 +48,10 @@ export function checkTransition(from: StoreStatus, to: StoreStatus, ctx: Transit
   }
   return { ok: true };
 }
+
+/**
+ * Link secreto de prévia de uma loja em desenvolvimento: quem abre vê a vitrine (pedidos continuam bloqueados).
+ * `domain` é o domínio das lojas (PREVIEW_DOMAIN, ou BASE_DOMAIN quando não definido).
+ */
+export const PREVIEW_PARAM = 'previa';
+export const previewLink = (slug: string, domain: string, token: string) => `https://${slug}.${domain}/?${PREVIEW_PARAM}=${token}`;

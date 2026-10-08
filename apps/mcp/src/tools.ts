@@ -6,13 +6,15 @@ import type { Token } from './core.js';
 import { McpError } from './errors.js';
 import { inStore, type Db } from './core.js';
 import { removeAddonGroup, removeCategory, removeEntity, saveAddonGroup, saveEntity, saveProduct, type EntityKey } from './entities.js';
-import { createStore, importMenu, listStores, listSubscriptions, requestPublication, updateStore, updateTheme, validateStore, viewStore } from './stores.js';
+import { createStore, importMenu, listStores, listSubscriptions, previewLinkFor, requestPublication, updateStore, updateTheme, validateStore, viewStore } from './stores.js';
+import { createUploadLink, uploadImageBase64 } from './uploads.js';
 
 export const READ_TOOLS = ['listar_lojas', 'ver_loja', 'validar_loja', 'listar_assinaturas'] as const;
 export const WRITE_TOOLS = [
   'criar_loja', 'atualizar_loja', 'atualizar_tema', 'salvar_categoria', 'remover_categoria', 'salvar_produto', 'remover_produto',
   'salvar_grupo_adicionais', 'remover_grupo_adicionais', 'salvar_banner', 'remover_banner', 'salvar_zona_entrega', 'remover_zona_entrega',
   'salvar_zona_impressao', 'remover_zona_impressao', 'salvar_forma_pagamento', 'remover_forma_pagamento', 'importar_cardapio', 'solicitar_publicacao',
+  'enviar_imagem', 'criar_link_upload', 'link_previa',
 ] as const;
 
 const json = (v: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(v, null, 2) }] });
@@ -35,17 +37,28 @@ const seguro = <A,>(fn: (a: A) => Promise<unknown>) => async (a: A) => {
     if (e instanceof McpError) return falha(e.message);
     const code = (e as { code?: string }).code;
     console.error('[mcp] erro', e);
-    if (code === '42501') return falha('Operação bloqueada pelo banco de dados: a loja não está em desenvolvimento ou o recurso não é permitido ao MCP.');
+    if (code === '42501') return falha('Operação bloqueada pelo banco de dados: a loja não pode ser alterada por este token ou o recurso não é permitido ao MCP.');
     if (code === '23503') return falha('Referência inválida: um dos IDs informados não pertence a esta loja.');
     return falha('Erro inesperado ao executar a operação.');
   }
 };
 
-/** Servidor MCP autenticado como `token`. Lojas em desenvolvimento aceitam toda a personalização; em produção só leitura. */
-export function createMcpServer(pools: Db, token: Token, opts: { baseDomain: string }) {
+export interface McpOpts {
+  baseDomain: string;
+  /** Domínio das lojas nos links de prévia e de imagem (padrão: baseDomain). */
+  previewDomain?: string;
+  /** Endereço público deste servidor MCP (links de upload). */
+  mcpPublicUrl?: string;
+}
+
+/** Servidor MCP autenticado como `token`. Lojas em desenvolvimento aceitam toda a personalização; em produção, só com token liberado. */
+export function createMcpServer(pools: Db, token: Token, opts: McpOpts) {
   const s = new McpServer({ name: 'pediu-lojas', version: '1.0.0' });
+  const escopo = token.allowProduction ? 'Lojas em desenvolvimento e em produção (este token pode alterar lojas no ar)' : 'Só lojas em desenvolvimento';
   const W = (name: string, description: string, inputSchema: z.ZodRawShape, handler: (a: any) => Promise<unknown>) =>
-    s.registerTool(name, { description: `${description} [Só lojas em desenvolvimento]`, inputSchema }, seguro(handler));
+    s.registerTool(name, { description: `${description} [${escopo}]`, inputSchema }, seguro(handler));
+  const domain = opts.previewDomain || opts.baseDomain;
+  const up = { storeOrigin: (slug: string) => `https://${slug}.${domain}`, mcpPublicUrl: (opts.mcpPublicUrl ?? '').replace(/\/$/, '') };
   const R = (name: string, description: string, inputSchema: z.ZodRawShape, handler: (a: any) => Promise<unknown>) =>
     s.registerTool(name, { description, inputSchema }, seguro(handler));
 
@@ -58,9 +71,14 @@ export function createMcpServer(pools: Db, token: Token, opts: { baseDomain: str
 
   // ---- escrita: só em desenvolvimento ----
   s.registerTool('criar_loja', {
-    description: 'Cria uma loja nova, sempre em desenvolvimento, com subdomínio, tema e configurações vazios. Informe tenantId (conta existente) ou tenantName (cria a conta).',
-    inputSchema: { slug: Slug.describe('Endereço: letras minúsculas, números e hífen'), nome: z.string().min(2).max(80), tenantId: z.string().uuid().optional(), tenantName: z.string().min(2).max(120).optional() },
-  }, seguro((a: any) => createStore(pools, token, { slug: a.slug, name: a.nome, tenantId: a.tenantId, tenantName: a.tenantName, domain: opts.baseDomain })));
+    description: 'Cria uma loja nova, sempre em desenvolvimento, com subdomínio, tema e configurações vazios e o administrador da loja (e-mail e senha obrigatórios). Informe tenantId (conta existente) ou tenantName (cria a conta).',
+    inputSchema: {
+      slug: Slug.describe('Endereço: letras minúsculas, números e hífen'), nome: z.string().min(2).max(80), tenantId: z.string().uuid().optional(), tenantName: z.string().min(2).max(120).optional(),
+      adminEmail: z.string().email().describe('E-mail do administrador da loja (entra no painel em /entrar, já em desenvolvimento)'),
+      adminSenha: z.string().min(10).max(200).describe('Senha inicial do administrador (mínimo 10 caracteres)'),
+      adminNome: z.string().min(2).max(80).default('Administrador'),
+    },
+  }, seguro((a: any) => createStore(pools, token, { slug: a.slug, name: a.nome, tenantId: a.tenantId, tenantName: a.tenantName, domain: opts.baseDomain, panelDomain: domain, admin: { name: a.adminNome, email: a.adminEmail, password: a.adminSenha } })));
 
   W('atualizar_loja', 'Atualiza o nome e os dados da loja (telefone, endereço, horários, pedido mínimo, tempo de preparo, mensagens).',
     { lojaId, nome: z.string().min(2).max(80).optional(), ...Object.fromEntries(Object.entries(StoreInput.shape).filter(([k]) => k !== 'name')) },
@@ -102,6 +120,17 @@ export function createMcpServer(pools: Db, token: Token, opts: { baseDomain: str
 
   W('solicitar_publicacao', 'Pede a publicação da loja. Roda a validação e abre um pedido que SÓ um administrador aprova no super admin (com autenticador). O MCP nunca publica.',
     { lojaId, observacao: z.string().max(300).optional() }, (a) => requestPublication(pools, token, a.lojaId, a.observacao));
+
+  // ---- imagens ----
+  W('enviar_imagem', 'Envia uma imagem PEQUENA em base64 (aceita "data:image/...;base64,"). Devolve "url" para usar em imageUrl, logoUrl, faviconUrl etc. Para fotos do computador, prefira criar_link_upload.',
+    { lojaId, base64: z.string().min(20).max(7_000_000).describe('Conteúdo da imagem em base64 (PNG, JPEG, WebP ou GIF, até 5 MB)') },
+    (a) => uploadImageBase64(pools, token, a.lojaId, a.base64, up));
+  W('criar_link_upload', 'Cria um link de upload de uso único (15 min) e devolve o comando curl para enviar um arquivo de imagem do computador. A resposta do curl traz "url" para usar em imageUrl/logoUrl.',
+    { lojaId }, (a) => createUploadLink(pools, token, a.lojaId, up));
+
+  // ---- prévia ----
+  W('link_previa', 'Link secreto para ver a vitrine de uma loja em desenvolvimento (quem tiver o link vê; pedidos continuam bloqueados). novo=true troca o link e invalida o anterior.',
+    { lojaId, novo: z.boolean().default(false) }, (a) => previewLinkFor(pools, token, a.lojaId, { novo: a.novo, domain }));
 
   return s;
 }

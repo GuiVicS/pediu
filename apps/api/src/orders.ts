@@ -81,12 +81,20 @@ export async function insertOrder(q: Q, a: {
 /** O público só enxerga lojas no ar. Rascunho (desenvolvimento), suspensa e arquivada respondem como inexistentes. */
 const publicStore = async (ctx: Ctx, slug: string) => { const s = await resolveStore(ctx, slug); return s && s.status === 'producao' ? s : null; };
 
-/** Vitrine para leitura: lojas no ar para qualquer pessoa; loja em `desenvolvimento` só para a equipe logada DESTA loja (pré-visualização). Pedidos continuam só em produção. */
+/** Cookie gravado pelo edge quando a loja é aberta pelo link de prévia (?previa=…). */
+export const PREVIEW_COOKIE = 'pediu_previa';
+
+/**
+ * Vitrine para leitura: lojas no ar para qualquer pessoa; loja em `desenvolvimento` para a equipe logada DESTA loja
+ * ou para quem abriu o link secreto de prévia. Pedidos continuam só em produção.
+ */
 const viewableStore = async (ctx: Ctx, req: FastifyRequest, slug: string) => {
   const s = await resolveStore(ctx, slug);
   if (!s) return null;
   if (s.status === 'producao') return s;
   if (s.status !== 'desenvolvimento') return null;
+  const preview = req.cookies[PREVIEW_COOKIE];
+  if (preview && (await ctx.pools.app.begin((q) => q`select app.store_preview_ok(${s.storeId}, ${preview}) as ok`))[0]?.ok) return s;
   const staff = await loadStaff(ctx, req);
   return staff && staff.storeId === s.storeId && staff.tenantId === s.tenantId ? s : null;
 };

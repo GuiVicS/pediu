@@ -110,6 +110,9 @@ export function manifestFor(s: Resolved, app: string | null = null) {
   return { id: a ? a.start : '/', name: a ? `${s.name} · ${a.label}` : s.name, short_name: a ? a.label : s.name.slice(0, 14), start_url: a ? `${a.start}?source=pwa` : '/?source=pwa', scope: '/', display: 'standalone', lang: 'pt-BR', background_color: '#ffffff', theme_color: s.themeColor ?? '#0091FF', icons };
 }
 
+/** Mesmo nome do parâmetro e do cookie usados pela API (apps/api/src/orders.ts) e pelo @pediu/shared. */
+const PREVIEW_PARAM = 'previa', PREVIEW_COOKIE = 'pediu_previa';
+
 const NOT_FOUND_PAGE = (host: string) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Loja não encontrada</title><body style="font:16px system-ui;display:grid;place-items:center;min-height:100vh;margin:0;background:#f6f8fb;color:#0f172a"><div style="text-align:center;padding:24px"><h1 style="margin:0 0 8px">Loja não encontrada</h1><p style="color:#64748b">O endereço <b>${esc(host)}</b> não está vinculado a nenhuma loja.</p></div>`;
 
 export function buildEdge(cfg: EdgeConfig, opts: { logger?: boolean } = {}): FastifyInstance {
@@ -146,6 +149,14 @@ export function buildEdge(cfg: EdgeConfig, opts: { logger?: boolean } = {}): Fas
       const immutable = rel.startsWith('assets/');
       return reply.type(MIME[extname(rel).toLowerCase()] ?? 'application/octet-stream').header('cache-control', immutable ? 'public, max-age=31536000, immutable' : 'public, max-age=300').send(file);
     }
+    // link de prévia (?previa=código): guarda o código em cookie (a API confere em cada leitura da vitrine) e tira da URL
+    const previa = (req.query as Record<string, string | undefined>)[PREVIEW_PARAM];
+    if (store.status === 'desenvolvimento' && previa !== undefined) {
+      const params = new URLSearchParams(req.url.split('?')[1] ?? ''); params.delete(PREVIEW_PARAM);
+      if (/^[A-Za-z0-9_-]{32,64}$/.test(previa)) reply.header('set-cookie', `${PREVIEW_COOKIE}=${previa}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax`);
+      return reply.redirect(`${path}${params.size ? `?${params}` : ''}`, 302);
+    }
+    if (store.status !== 'producao') reply.header('x-robots-tag', 'noindex');   // prévia não aparece em buscadores
     // rota da SPA: devolve o index.html da versão da loja (cai no embutido se a versão publicada sumiu)
     const indexBuf = (await bundles.read(store.version, 'index.html')) ?? (await bundles.builtin('index.html'));
     if (!indexBuf) return reply.code(503).type('text/plain').send('Esta loja ainda não tem uma versão publicada.');

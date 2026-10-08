@@ -2,7 +2,11 @@ import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { authenticate, rateLimiter } from '../src/auth.js';
 import { READ_TOOLS, WRITE_TOOLS } from '../src/tools.js';
-import { hashToken } from '@pediu/shared';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { hashToken, verifyPassword } from '@pediu/shared';
+import { receiveUpload } from '../src/uploads.js';
 import { setup, type Env } from './helpers.js';
 
 let env: Env; let mcp: Awaited<ReturnType<Env['connect']>>;
@@ -10,9 +14,13 @@ before(async () => { env = await setup(); mcp = await env.connect(env.anyToken);
 after(async () => { await mcp.close(); await env.close(); });
 
 const uuid = '00000000-0000-4000-8000-000000000000';
+const SENHA = 'senha-bem-longa-123';
+const admin = (slug: string) => ({ adminEmail: `admin@${slug}.test`, adminSenha: SENHA });
+/** PNG 1x1 válido. */
+const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 /** Cria uma loja de teste e garante que deu certo (nomes inválidos fariam testes passarem pelo motivo errado). */
 const mk = async (slug: string, c: { call: Awaited<ReturnType<Env['connect']>>['call'] } = mcp) => {
-  const r = await c.call('criar_loja', { slug, nome: `Loja ${slug}`, tenantName: `Conta ${slug}` });
+  const r = await c.call('criar_loja', { slug, nome: `Loja ${slug}`, tenantName: `Conta ${slug}`, ...admin(slug) });
   assert.equal(r.isError, false, `criar_loja ${slug}: ${r.text}`);
   return r.data.id as string;
 };
@@ -26,7 +34,7 @@ test('expõe exatamente as ferramentas planejadas (leitura + escrita)', async ()
 });
 
 test('fluxo de criação: loja → tema → cardápio → banner → zonas → pagamento, tudo gravado e auditado', async () => {
-  const c = await mcp.call('criar_loja', { slug: 'pizzaria-mcp', nome: 'Pizzaria MCP', tenantName: 'Cliente MCP' });
+  const c = await mcp.call('criar_loja', { slug: 'pizzaria-mcp', nome: 'Pizzaria MCP', tenantName: 'Cliente MCP', ...admin('pizzaria-mcp') });
   assert.equal(c.isError, false); assert.equal(c.data.status, 'desenvolvimento'); assert.equal(c.data.dominio, 'pizzaria-mcp.pediu.test');
   const lojaId = c.data.id as string;
 
@@ -50,6 +58,10 @@ test('fluxo de criação: loja → tema → cardápio → banner → zonas → p
   const upd = await mcp.call('salvar_produto', { lojaId, id: prod.data.id, name: 'Calabresa Especial', price: 54.9 });
   assert.equal(upd.data.name, 'Calabresa Especial');
   assert.equal(upd.data.imageUrl, 'https://cdn.exemplo.com/calabresa.jpg');
+  // só groupIds (sem nenhum campo do produto): liga/desliga grupos sem quebrar o UPDATE
+  const soGrupos = await mcp.call('salvar_produto', { lojaId, id: prod.data.id, groupIds: [] });
+  assert.equal(soGrupos.isError, false); assert.deepEqual(soGrupos.data.groupIds, []); assert.equal(soGrupos.data.name, 'Calabresa Especial');
+  assert.equal((await mcp.call('salvar_produto', { lojaId, id: prod.data.id, groupIds: [grupo.data.id] })).isError, false);
   const rename = await mcp.call('salvar_grupo_adicionais', { lojaId, id: grupo.data.id, name: 'Borda recheada' }); // sem addons: mantém os 2
   assert.equal(rename.isError, false);
   const incompleto = await mcp.call('salvar_produto', { lojaId, name: 'Sem categoria' });
@@ -144,7 +156,7 @@ test('LOJA EM PRODUÇÃO: nenhuma ferramenta de escrita funciona e nada muda no 
   const forma = (await mcp.call('salvar_forma_pagamento', { lojaId, name: 'Pix', type: 'pix' })).data.id as string;
 
   const snap = async () => JSON.stringify(await env.plat(async (q) => ({
-    s: await q`select name, slug, status from stores where id = ${lojaId}`, th: await q`select data from store_themes where store_id = ${lojaId}`,
+    s: await q`select name, slug, status, preview_token from stores where id = ${lojaId}`, th: await q`select data from store_themes where store_id = ${lojaId}`,
     st: await q`select data from store_settings where store_id = ${lojaId}`, c: await q`select * from categories where store_id = ${lojaId} order by id`,
     p: await q`select * from products where store_id = ${lojaId} order by id`, g: await q`select * from addon_groups where store_id = ${lojaId}`,
     b: await q`select * from banners where store_id = ${lojaId}`, z: await q`select * from delivery_zones where store_id = ${lojaId}`,
@@ -166,6 +178,7 @@ test('LOJA EM PRODUÇÃO: nenhuma ferramenta de escrita funciona e nada muda no 
     ['salvar_zona_impressao', { lojaId, name: 'Nova' }], ['remover_zona_impressao', { lojaId, zonaId: zi }],
     ['salvar_forma_pagamento', { lojaId, name: 'Nova', type: 'cash' }], ['remover_forma_pagamento', { lojaId, formaId: forma }],
     ['importar_cardapio', cardapio], ['importar_cardapio', { ...cardapio, substituir: true, confirmarSubstituicao: true }], ['solicitar_publicacao', { lojaId }],
+    ['enviar_imagem', { lojaId, base64: PNG }], ['criar_link_upload', { lojaId }], ['link_previa', { lojaId }],
   ];
   // cobre TODAS as ferramentas de escrita (exceto criar_loja, que não opera sobre loja existente)
   const cobertas = new Set(tentativas.map(([n]) => n));
@@ -227,15 +240,15 @@ test('token limitado: só enxerga e altera as lojas liberadas e não cria lojas'
     assert.equal(bloq.isError, true); assert.match(bloq.text, /não tem acesso/);
     assert.equal((await lim.call('ver_loja', { lojaId: outra })).isError, true);
     assert.deepEqual((await lim.call('listar_lojas', {})).data.map((l: any) => l.id), [livre]);
-    const nova = await lim.call('criar_loja', { slug: 'nova-lim', nome: 'Nova Loja', tenantName: 'Conta Nova' });
+    const nova = await lim.call('criar_loja', { slug: 'nova-lim', nome: 'Nova Loja', tenantName: 'Conta Nova', ...admin('nova-lim') });
     assert.equal(nova.isError, true); assert.match(nova.text, /limitado/);
   } finally { await lim.close(); }
 });
 
 test('slug repetido e loja inexistente dão mensagens claras', async () => {
-  assert.match((await mcp.call('criar_loja', { slug: 'pizzaria-mcp', nome: 'Outra', tenantName: 'Outra Conta' })).text, /Já existe/);
+  assert.match((await mcp.call('criar_loja', { slug: 'pizzaria-mcp', nome: 'Outra', tenantName: 'Outra Conta', ...admin('outra') })).text, /Já existe/);
   assert.match((await mcp.call('ver_loja', { lojaId: uuid })).text, /não encontrad/);
-  const inv = await mcp.call('criar_loja', { slug: 'Slug Inválido', nome: 'Nome Ok', tenantName: 'Conta Ok' });
+  const inv = await mcp.call('criar_loja', { slug: 'Slug Inválido', nome: 'Nome Ok', tenantName: 'Conta Ok', ...admin('x') });
   assert.equal(inv.isError, true); assert.match(inv.text, /slug|minúsculas/i);
 });
 
@@ -262,4 +275,87 @@ test('limite de requisições por token', () => {
   assert.deepEqual([allow('a'), allow('a'), allow('a'), allow('a')], [true, true, true, false]);
   assert.equal(allow('b'), true);
   t = 1500; assert.equal(allow('a'), true);
+});
+
+// ================= novidades: administrador, produção por token, imagens e prévia =================
+test('criar_loja exige o administrador e o cria junto com a loja', async () => {
+  const sem = await mcp.call('criar_loja', { slug: 'sem-adm', nome: 'Sem adm', tenantName: 'Conta' });
+  assert.equal(sem.isError, true);
+  assert.equal((await mcp.call('criar_loja', { slug: 'senha-curta', nome: 'X', tenantName: 'Conta', adminEmail: 'a@b.com', adminSenha: 'curta' })).isError, true);
+  const r = await mcp.call('criar_loja', { slug: 'com-adm', nome: 'Com adm', tenantName: 'Conta Adm', adminEmail: 'Dono@Loja.com', adminSenha: SENHA, adminNome: 'Dono' });
+  assert.equal(r.isError, false, r.text);
+  assert.equal(r.data.administrador.email, 'dono@loja.com'); assert.equal(r.data.administrador.painel, 'https://com-adm.pediu.test/entrar');
+  const [u] = await env.plat((q) => q`select role, store_id, name, password_hash, active from staff_users where email = 'dono@loja.com'`);
+  assert.equal(u!.role, 'admin'); assert.equal(u!.store_id, r.data.id); assert.equal(u!.active, true);
+  assert.equal(await verifyPassword(SENHA, u!.password_hash), true);
+  // o MCP não lê nem altera usuários (só insere o primeiro administrador)
+  await assert.rejects(env.pools.mcp.begin((q) => q`select * from staff_users`));
+  await assert.rejects(env.pools.mcp.begin((q) => q`update staff_users set role = 'admin'`));
+});
+
+test('token com permissão de produção altera loja no ar, mas não muda status nem mexe em loja suspensa', async () => {
+  const lojaId = await mk('no-ar-liberado');
+  const cat = (await mcp.call('salvar_categoria', { lojaId, name: 'Antes' })).data.id as string;
+  await env.plat((q) => q`update stores set status = 'producao' where id = ${lojaId}`);
+  const prod = await env.connect({ id: '33333333-3333-3333-3333-333333333333', storeLimit: null, allowProduction: true });
+  try {
+    assert.equal((await prod.call('ver_loja', { lojaId })).data.loja.editavel, true);
+    assert.equal((await mcp.call('ver_loja', { lojaId })).data.loja.editavel, false);   // token comum continua só lendo
+    const r = await prod.call('salvar_categoria', { lojaId, id: cat, name: 'Depois' });
+    assert.equal(r.isError, false, r.text);
+    assert.equal((await prod.call('atualizar_tema', { lojaId, primary: '#123456' })).isError, false);
+    assert.equal((await prod.call('salvar_produto', { lojaId, categoryId: cat, name: 'Novo no ar', price: 9 })).isError, false);
+    const [c] = await env.plat((q) => q`select name from categories where id = ${cat}`);
+    assert.equal(c!.name, 'Depois');
+    const [rev] = await env.plat((q) => q`select count(*)::int as n from store_config_revisions where store_id = ${lojaId} and actor = ${'mcp:33333333-3333-3333-3333-333333333333'}`);
+    assert.ok(rev!.n >= 3);   // continua tudo registrado (desfazer/auditoria)
+    // continua sem publicar, sem prévia e sem mexer no status
+    assert.match((await prod.call('solicitar_publicacao', { lojaId })).text, /já está no ar/);
+    assert.match((await prod.call('link_previa', { lojaId })).text, /no ar/);
+    await assert.rejects(env.pools.mcp.begin(async (q) => { await q`select set_config('pediu.mcp_producao', 'on', true)`; await q`update stores set status = 'desenvolvimento' where id = ${lojaId}`; }));
+    // a liberação vale só na transação do serviço: SQL direto sem ela continua barrado
+    assert.equal((await env.pools.mcp.begin((q) => q`update categories set name = 'hack' where id = ${cat} returning id`)).length, 0);
+    // suspensa: nem com permissão
+    await env.plat((q) => q`update stores set status = 'suspensa' where id = ${lojaId}`);
+    assert.match((await prod.call('salvar_categoria', { lojaId, name: 'x' })).text, /suspensa/);
+  } finally { await prod.close(); }
+});
+
+test('imagens: base64 e link de upload de uso único gravam o arquivo e devolvem a URL relativa', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mcp-up-'));
+  process.env.UPLOADS_DIR = dir;
+  try {
+    const lojaId = await mk('com-fotos');
+    const r = await mcp.call('enviar_imagem', { lojaId, base64: `data:image/png;base64,${PNG}` });
+    assert.equal(r.isError, false, r.text);
+    assert.match(r.data.url, new RegExp(`^/uploads/${lojaId}/[0-9a-f-]{36}\\.png$`));
+    assert.equal(r.data.urlCompleta, `https://com-fotos.pediu.test${r.data.url}`);
+    assert.ok(existsSync(join(dir, r.data.url.slice('/uploads/'.length))));
+    // a URL relativa vale como foto do produto
+    const cat = (await mcp.call('salvar_categoria', { lojaId, name: 'C' })).data.id;
+    assert.equal((await mcp.call('salvar_produto', { lojaId, categoryId: cat, name: 'Com foto', price: 5, imageUrl: r.data.url })).isError, false);
+    assert.match((await mcp.call('enviar_imagem', { lojaId, base64: Buffer.from('não sou imagem nenhuma').toString('base64') })).text, /PNG, JPEG/);
+
+    const l = await mcp.call('criar_link_upload', { lojaId });
+    assert.equal(l.isError, false, l.text);
+    const code = l.data.link.split('/upload/')[1];
+    assert.match(l.data.comando, /curl .*--data-binary/);
+    const opts = { storeOrigin: (s: string) => `https://${s}.pediu.test`, mcpPublicUrl: '', slugOf: async () => 'com-fotos' };
+    await assert.rejects(receiveUpload(code, Buffer.from('texto'), opts), /PNG, JPEG/);   // arquivo errado não gasta o link
+    const ok = await receiveUpload(code, Buffer.from(PNG, 'base64'), opts);
+    assert.match(ok.url, /^\/uploads\//); assert.ok(existsSync(join(dir, ok.url.slice('/uploads/'.length))));
+    await assert.rejects(receiveUpload(code, Buffer.from(PNG, 'base64'), opts), /já usado|inválido/);   // uso único
+  } finally { delete process.env.UPLOADS_DIR; rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('link_previa: cria, repete o mesmo link e troca com novo=true', async () => {
+  const lojaId = await mk('com-previa');
+  const a = await mcp.call('link_previa', { lojaId });
+  assert.equal(a.isError, false, a.text);
+  assert.match(a.data.link, /^https:\/\/com-previa\.pediu\.test\/\?previa=[A-Za-z0-9_-]{32}$/);
+  assert.equal((await mcp.call('link_previa', { lojaId })).data.link, a.data.link);
+  const b = await mcp.call('link_previa', { lojaId, novo: true });
+  assert.notEqual(b.data.link, a.data.link);
+  const [s] = await env.plat((q) => q`select preview_token from stores where id = ${lojaId}`);
+  assert.equal(b.data.link.endsWith(s!.preview_token), true);
 });

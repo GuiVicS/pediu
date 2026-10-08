@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { withPlatform, withTenant, type Q } from '@pediu/db';
-import { applyFeatureChanges, checkTransition, FEATURES, generateToken, hashPassword, Slug, STORE_STATUS, type StoreStatus } from '@pediu/shared';
+import { randomBytes } from 'node:crypto';
+import { applyFeatureChanges, checkTransition, FEATURES, generateToken, hashPassword, previewLink, Slug, STORE_STATUS, type StoreStatus } from '@pediu/shared';
 import type { Ctx } from './context.js';
 import { audit, fail, parse } from './http.js';
 import { guard } from './session.js';
@@ -9,6 +10,8 @@ import { staffGuard } from './staff.js';
 
 const uuid = z.string().uuid();
 const isUnique = (e: unknown) => (e as { code?: string })?.code === '23505';
+/** Violação de unicidade do e-mail da equipe (staff_users: tenant_id + email). O nome da restrição nem sempre vem; o detalhe cita a coluna. */
+const isStaffEmail = (e: unknown) => { const x = e as { constraint_name?: string; constraint?: string; detail?: string; message?: string }; return /staff_users|\(tenant_id, email\)/.test(`${x.constraint_name ?? ''} ${x.constraint ?? ''} ${x.detail ?? ''} ${x.message ?? ''}`); };
 
 type Applied = { ok: true; before: StoreStatus; after: StoreStatus } | { ok: false; status: number; code: string; message: string };
 
@@ -40,9 +43,13 @@ export function storeRoutes(app: FastifyInstance, ctx: Ctx) {
   });
 
   app.post(`${P}/stores`, { preHandler: guard(ctx) }, async (req, reply) => {
-    const b = parse(z.object({ slug: Slug, name: z.string().min(2).max(80), tenantId: uuid.optional(), tenantName: z.string().min(2).max(120).optional() })
-      .refine((v) => v.tenantId || v.tenantName, 'Informe tenantId ou tenantName'), req.body, reply);
+    // o administrador da loja é obrigatório: assim o painel (/entrar) funciona desde a criação, ainda em desenvolvimento
+    const b = parse(z.object({
+      slug: Slug, name: z.string().min(2).max(80), tenantId: uuid.optional(), tenantName: z.string().min(2).max(120).optional(),
+      adminName: z.string().min(2).max(80).default('Administrador'), adminEmail: z.string().email().transform((e) => e.toLowerCase()), adminPassword: z.string().min(10).max(200),
+    }).refine((v) => v.tenantId || v.tenantName, 'Informe tenantId ou tenantName'), req.body, reply);
     if (!b) return;
+    const adminHash = await hashPassword(b.adminPassword);
     try {
       const out = await withPlatform(ctx.pools, async (q) => {
         const tenantId = b.tenantId ?? (await q`insert into tenants (name) values (${b.tenantName!}) returning id`)[0]!.id;
@@ -51,11 +58,13 @@ export function storeRoutes(app: FastifyInstance, ctx: Ctx) {
         await q`insert into store_domains (tenant_id, store_id, hostname, kind, verified_at) values (${tenantId}, ${s!.id}, ${host}, 'subdomain', now())`;
         await q`insert into store_themes (store_id, tenant_id) values (${s!.id}, ${tenantId})`;
         await q`insert into store_settings (store_id, tenant_id) values (${s!.id}, ${tenantId})`;
-        await audit(q, { actorKind: 'superadmin', actorId: req.session!.adminId, tenantId, storeId: s!.id, action: 'store.create', ip: req.ip, after: { slug: b.slug, name: b.name } });
-        return { id: s!.id, tenantId, slug: s!.slug, status: s!.status, domain: host };
+        await q`insert into staff_users (tenant_id, store_id, email, name, role, password_hash, active) values (${tenantId}, ${s!.id}, ${b.adminEmail}, ${b.adminName}, 'admin', ${adminHash}, true)`;
+        await audit(q, { actorKind: 'superadmin', actorId: req.session!.adminId, tenantId, storeId: s!.id, action: 'store.create', ip: req.ip, after: { slug: b.slug, name: b.name, admin: b.adminEmail } });
+        return { id: s!.id, tenantId, slug: s!.slug, status: s!.status, domain: host, adminEmail: b.adminEmail };
       });
       return reply.status(201).send(out);
     } catch (e) {
+      if (isUnique(e) && isStaffEmail(e)) return fail(reply, 409, 'admin_email_taken', 'Este e-mail de administrador já está em uso nesta conta.');
       if (isUnique(e)) return fail(reply, 409, 'slug_taken', 'Já existe uma loja com este endereço.');
       throw e;
     }
@@ -124,23 +133,23 @@ export function storeRoutes(app: FastifyInstance, ctx: Ctx) {
   // ---- tokens do MCP ----
   app.get(`${P}/mcp-tokens`, { preHandler: guard(ctx) }, async () => ({
     tokens: await withPlatform(ctx.pools, (q) => q`
-      select id, name, hint, store_limit, expires_at, revoked_at, last_used_at, last_ip::text as last_ip, created_at from mcp_tokens order by created_at desc`),
+      select id, name, hint, store_limit, allow_production, expires_at, revoked_at, last_used_at, last_ip::text as last_ip, created_at from mcp_tokens order by created_at desc`),
   }));
 
   app.post(`${P}/mcp-tokens`, { preHandler: guard(ctx, { stepUp: true }) }, async (req, reply) => {
-    const b = parse(z.object({ name: z.string().min(2).max(80), expiresInDays: z.number().int().min(1).max(365).default(90), storeIds: z.array(uuid).max(200).optional() }), req.body, reply); if (!b) return;
+    const b = parse(z.object({ name: z.string().min(2).max(80), expiresInDays: z.number().int().min(1).max(365).default(90), storeIds: z.array(uuid).max(200).optional(), allowProduction: z.boolean().default(false) }), req.body, reply); if (!b) return;
     const t = generateToken('pmcp');
     const expires = new Date(ctx.clock.now().getTime() + b.expiresInDays * 86_400_000).toISOString();
     const limit = b.storeIds?.length ? JSON.stringify(b.storeIds) : null;
     const row = await withPlatform(ctx.pools, async (q) => {
       const [r] = await q`
-        insert into mcp_tokens (name, token_hash, hint, store_limit, expires_at, created_by)
-        values (${b.name}, ${t.hash}, ${t.hint}, (select array_agg(x::uuid) from jsonb_array_elements_text(${limit}::jsonb) x), ${expires}, ${req.session!.adminId}) returning id`;
-      await audit(q, { actorKind: 'superadmin', actorId: req.session!.adminId, action: 'mcp.token_created', ip: req.ip, meta: { tokenId: r!.id, name: b.name, expires, storeLimit: b.storeIds ?? null } });
+        insert into mcp_tokens (name, token_hash, hint, store_limit, allow_production, expires_at, created_by)
+        values (${b.name}, ${t.hash}, ${t.hint}, (select array_agg(x::uuid) from jsonb_array_elements_text(${limit}::jsonb) x), ${b.allowProduction}, ${expires}, ${req.session!.adminId}) returning id`;
+      await audit(q, { actorKind: 'superadmin', actorId: req.session!.adminId, action: 'mcp.token_created', ip: req.ip, meta: { tokenId: r!.id, name: b.name, expires, storeLimit: b.storeIds ?? null, allowProduction: b.allowProduction } });
       return r!;
     });
     // o token aparece só agora; depois só existe o hash
-    return reply.status(201).send({ id: row.id, token: t.token, expiresAt: expires });
+    return reply.status(201).send({ id: row.id, token: t.token, expiresAt: expires, allowProduction: b.allowProduction });
   });
 
   app.delete(`${P}/mcp-tokens/:id`, { preHandler: guard(ctx, { stepUp: true }) }, async (req, reply) => {
@@ -151,6 +160,47 @@ export function storeRoutes(app: FastifyInstance, ctx: Ctx) {
       return r.length;
     });
     return n ? { ok: true } : fail(reply, 404, 'not_found', 'Token não encontrado ou já revogado.');
+  });
+
+  // liga/desliga "pode alterar lojas em produção" num token existente (exige o autenticador)
+  app.patch(`${P}/mcp-tokens/:id`, { preHandler: guard(ctx, { stepUp: true }) }, async (req, reply) => {
+    const id = parse(uuid, (req.params as { id: string }).id, reply); if (!id) return;
+    const b = parse(z.object({ allowProduction: z.boolean() }), req.body, reply); if (!b) return;
+    const n = await withPlatform(ctx.pools, async (q) => {
+      const r = await q`update mcp_tokens set allow_production = ${b.allowProduction} where id = ${id} and revoked_at is null returning id`;
+      if (r.length) await audit(q, { actorKind: 'superadmin', actorId: req.session!.adminId, action: 'mcp.token_updated', ip: req.ip, meta: { tokenId: id, allowProduction: b.allowProduction } });
+      return r.length;
+    });
+    return n ? { ok: true, allowProduction: b.allowProduction } : fail(reply, 404, 'not_found', 'Token não encontrado ou já revogado.');
+  });
+
+  // ---- link secreto de prévia (loja em desenvolvimento) ----
+  const previewDomain = process.env.PREVIEW_DOMAIN || ctx.baseDomain;
+  const previewOf = (s: { slug: string; preview_token: string | null }) => (s.preview_token ? previewLink(s.slug, previewDomain, s.preview_token) : null);
+  app.get(`${P}/stores/:id/preview`, { preHandler: guard(ctx) }, async (req, reply) => {
+    const id = parse(uuid, (req.params as { id: string }).id, reply); if (!id) return;
+    const [s] = await withPlatform(ctx.pools, (q) => q`select slug, status, preview_token from stores where id = ${id}`);
+    if (!s) return fail(reply, 404, 'not_found', 'Loja não encontrada.');
+    return { link: s.status === 'desenvolvimento' ? previewOf(s as any) : null, status: s.status };
+  });
+  // cria ou troca o link (o anterior para de funcionar na hora)
+  app.post(`${P}/stores/:id/preview`, { preHandler: guard(ctx) }, async (req, reply) => {
+    const id = parse(uuid, (req.params as { id: string }).id, reply); if (!id) return;
+    const token = randomBytes(24).toString('base64url');
+    const out = await withPlatform(ctx.pools, async (q) => {
+      const [s] = await q`update stores set preview_token = ${token} where id = ${id} and status = 'desenvolvimento' returning id, tenant_id, slug, preview_token`;
+      if (s) await audit(q, { actorKind: 'superadmin', actorId: req.session!.adminId, tenantId: s.tenant_id, storeId: s.id, action: 'store.preview_link_created', ip: req.ip });
+      return s;
+    });
+    return out ? { link: previewOf(out as any) } : fail(reply, 409, 'not_in_dev', 'Só lojas em desenvolvimento têm link de prévia.');
+  });
+  app.delete(`${P}/stores/:id/preview`, { preHandler: guard(ctx) }, async (req, reply) => {
+    const id = parse(uuid, (req.params as { id: string }).id, reply); if (!id) return;
+    await withPlatform(ctx.pools, async (q) => {
+      const [s] = await q`update stores set preview_token = null where id = ${id} returning id, tenant_id`;
+      if (s) await audit(q, { actorKind: 'superadmin', actorId: req.session!.adminId, tenantId: s.tenant_id, storeId: s.id, action: 'store.preview_link_revoked', ip: req.ip });
+    });
+    return { ok: true };
   });
 }
 

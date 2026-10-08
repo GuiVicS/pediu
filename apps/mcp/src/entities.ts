@@ -28,6 +28,8 @@ export async function saveEntity(q: Q, t: Token, s: StoreRef, key: EntityKey, in
   if (input.id) {
     const [before] = await raw(q, `select * from ${table} where id = ? and store_id = ?`, [input.id, s.id]);
     if (!before) throw notFound(label);
+    // nada para alterar na própria entidade (ex.: produto só com groupIds): sem isso o SQL sai "set  where" e quebra
+    if (!names.length) return toApi(cols, before);
     const [row] = await raw(q, `update ${table} set ${names.map((n) => `${n} = ${slot(n)}`).join(', ')} where id = ? and store_id = ? returning *`, [...vals, input.id, s.id]);
     await record(q, t, s, key, input.id, 'update', toApi(cols, before), toApi(cols, row!));
     return toApi(cols, row!);

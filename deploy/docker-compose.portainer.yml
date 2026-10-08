@@ -19,6 +19,7 @@ services:
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY:-}
       SUPABASE_BUCKET: ${SUPABASE_BUCKET:-pediu-public}
+      PREVIEW_DOMAIN: ${PREVIEW_DOMAIN:-}   # domínio das lojas no link de prévia (vazio = BASE_DOMAIN)
       INTERNAL_WHISPER_URL: http://whisper:8000/v1/audio/transcriptions   # transcrição de áudio no serviço interno (abaixo); a tela de IA do super admin pode trocar
       # login de clientes por e-mail (sem SMTP o código de acesso responde 503)
       SMTP_HOST: ${SMTP_HOST:-}
@@ -65,6 +66,13 @@ services:
       PORT: "3100"
       MCP_DATABASE_URL: ${MCP_DATABASE_URL}
       BASE_DOMAIN: ${BASE_DOMAIN}
+      PREVIEW_DOMAIN: ${PREVIEW_DOMAIN:-}            # domínio das lojas nos links de prévia/imagem (vazio = BASE_DOMAIN)
+      MCP_PUBLIC_URL: https://${MCP_HOST}            # links de upload (criar_link_upload)
+      UPLOADS_DIR: /data/uploads                     # mesmo volume da API (sem Supabase Storage)
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY:-}
+      SUPABASE_BUCKET: ${SUPABASE_BUCKET:-pediu-public}
+    volumes: ["uploads:/data/uploads"]
     restart: unless-stopped
 
   caddy:
@@ -74,6 +82,7 @@ services:
       ACME_EMAIL: ${ACME_EMAIL}
       API_HOST: ${API_HOST}
       MCP_HOST: ${MCP_HOST}
+      EDGE_SECRET: ${EDGE_SECRET}   # o "ask" do on-demand TLS precisa dele (sem isso nenhuma loja ganha HTTPS)
     configs:
       - source: caddyfile
         target: /etc/caddy/Caddyfile
@@ -87,7 +96,7 @@ configs:
       {
         email {$ACME_EMAIL}
         on_demand_tls {
-          ask http://api:3000/v1/edge/tls-check
+          ask http://api:3000/v1/edge/tls-check?secret={$EDGE_SECRET}
         }
       }
       https:// {

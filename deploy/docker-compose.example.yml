@@ -14,12 +14,13 @@ services:
     restart: unless-stopped
   mcp:
     build: { context: .., target: mcp }
-    environment: { PORT: 3100, MCP_DATABASE_URL: "${MCP_DATABASE_URL}", BASE_DOMAIN: "${BASE_DOMAIN}" }   # só esta conexão: nunca as outras
+    environment: { PORT: 3100, MCP_DATABASE_URL: "${MCP_DATABASE_URL}", BASE_DOMAIN: "${BASE_DOMAIN}", MCP_PUBLIC_URL: "https://${MCP_HOST}", UPLOADS_DIR: /data/uploads }   # só esta conexão: nunca as outras
+    volumes: [ "uploads:/data/uploads" ]     # imagens enviadas pelo MCP (mesmo volume da API)
     restart: unless-stopped
   caddy:
     image: caddy:2
     ports: [ "80:80", "443:443" ]
-    environment: { ACME_EMAIL: "${ACME_EMAIL}", API_HOST: "${API_HOST}", MCP_HOST: "${MCP_HOST}" }
+    environment: { ACME_EMAIL: "${ACME_EMAIL}", API_HOST: "${API_HOST}", MCP_HOST: "${MCP_HOST}", EDGE_SECRET: "${EDGE_SECRET}" }
     volumes: [ "./Caddyfile:/etc/caddy/Caddyfile:ro", "caddy_data:/data" ]
     depends_on: [ api, edge, mcp ]
     restart: unless-stopped
