@@ -26,13 +26,16 @@ test('manifesto da loja abre na vitrine; o de cada app abre direto na tela dele,
   const m = manifestFor(store);
   assert.equal(m.start_url, '/?source=pwa'); assert.equal(m.id, '/'); assert.equal(m.name, 'Burger Lab');
   const g = manifestFor(store, 'garcom');
-  assert.equal(g.start_url, '/garcom?source=pwa'); assert.equal(g.id, '/garcom'); assert.equal(g.name, 'Burger Lab · Garçom'); assert.equal(g.scope, '/');
+  assert.equal(g.start_url, '/garcom?source=pwa'); assert.equal(g.id, '/garcom'); assert.equal(g.name, 'Burger Lab · Garçom'); assert.equal(g.scope, '/garcom');
+  assert.equal(m.scope, '/');   // a loja fica com a raiz; cada app de operação, com o próprio escopo
+  assert.equal(new Set(Object.keys(PWA_APPS).map((k) => manifestFor(store, k).icons[0]!.src)).size, 4);   // um ícone por app
   assert.deepEqual(new Set(Object.keys(PWA_APPS).map((k) => manifestFor(store, k).id)).size, 4);
   assert.equal(manifestFor(store, 'inexistente').id, '/');
   // instalável: sempre há ícone de 192 px ou mais; app de operação usa a marca da plataforma, a loja usa o próprio ícone quando tem
   assert.ok(m.icons.some((i) => i.sizes === '192x192'));
   assert.equal(manifestFor({ ...store, iconUrl: '/uploads/logo.png' }).icons[0]!.src, '/uploads/logo.png');
-  assert.equal(manifestFor({ ...store, iconUrl: '/uploads/logo.png' }, 'pdv').icons[0]!.src, '/brand/icon-192.png');
+  assert.equal(manifestFor({ ...store, iconUrl: '/uploads/logo.png' }, 'pdv').icons[0]!.src, '/brand/apps/pdv-192.png');
+  assert.ok(manifestFor(store, 'pdv').icons.some((i) => i.sizes === '192x192' && i.purpose === 'maskable'));
 });
 
 test('o edge serve o manifesto certo e injeta o link no HTML de cada rota', async () => {

@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { BadgePercent, CreditCard, Image, Layers, LayoutDashboard, ListPlus, Package, Palette, Printer, ShoppingBag, Star, Store as StoreIcon, type LucideIcon } from 'lucide-react';
+import { BadgePercent, Blocks, CreditCard, Image, Layers, LayoutDashboard, ListPlus, Package, Palette, Printer, ShoppingBag, Star, Store as StoreIcon, type LucideIcon } from 'lucide-react';
 import { cx } from '@/ui/kit';
 
-const TITLE_ICONS: [string, LucideIcon][] = [['dashboard', LayoutDashboard], ['pedidos', ShoppingBag], ['produtos', Package], ['categorias', Layers], ['adicionais', ListPlus], ['destaques', Star], ['banners', Image], ['aparência', Palette], ['pagamentos', CreditCard], ['impressão', Printer], ['loja', StoreIcon], ['cupons', BadgePercent]];
+const TITLE_ICONS: [string, LucideIcon][] = [['dashboard', LayoutDashboard], ['pedidos', ShoppingBag], ['produtos', Package], ['categorias', Layers], ['adicionais', ListPlus], ['destaques', Star], ['banners', Image], ['aparência', Palette], ['integrações', Blocks], ['pagamentos', CreditCard], ['impressão', Printer], ['loja', StoreIcon], ['cupons', BadgePercent]];
 
 /** Elemento do topo do painel (desktop) onde o título de cada página é exibido, ao lado da busca e do usuário. */
 export const TopbarSlot = createContext<HTMLElement | null>(null);

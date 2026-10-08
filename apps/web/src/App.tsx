@@ -16,7 +16,7 @@ import AddonsAdmin from '@/admin/AddonsAdmin';
 import FeaturedAdmin from '@/admin/FeaturedAdmin';
 import BannersAdmin from '@/admin/BannersAdmin';
 import ThemeEditor from '@/admin/ThemeEditor';
-import PaymentsAdmin from '@/admin/PaymentsAdmin';
+import IntegrationsAdmin from '@/admin/IntegrationsAdmin';
 import PrintAdmin from '@/admin/PrintAdmin';
 import StoreAdmin from '@/admin/StoreAdmin';
 import UsersAdmin from '@/admin/UsersAdmin';
@@ -37,6 +37,8 @@ export default function App() {
     <SessionProvider>
       <Routes>
         <Route path="/entrar" element={<Login />} />
+        {/* login dentro do escopo de cada PWA (o app instalado não "sai" para /entrar) */}
+        {['painel', 'pdv', 'garcom', 'entregador'].map((a) => <Route key={a} path={`/${a}/entrar`} element={<Login />} />)}
 
         <Route path="/pdv" element={<RequirePerm perm="pdv"><PdvApp /></RequirePerm>} />
         <Route path="/garcom" element={<RequirePerm perm="garcom"><WaiterApp /></RequirePerm>} />
@@ -54,7 +56,8 @@ export default function App() {
           <Route path="destaques" element={<RequirePerm perm="admin.cardapio"><FeaturedAdmin /></RequirePerm>} />
           <Route path="banners" element={<RequirePerm perm="admin.loja"><BannersAdmin /></RequirePerm>} />
           <Route path="aparencia" element={<RequirePerm perm="admin.loja"><ThemeEditor /></RequirePerm>} />
-          <Route path="pagamentos" element={<RequirePerm perm="admin.loja"><PaymentsAdmin /></RequirePerm>} />
+          <Route path="integracoes" element={<RequirePerm perm="admin.loja"><IntegrationsAdmin /></RequirePerm>} />
+          <Route path="pagamentos" element={<Navigate to="/painel/integracoes" replace />} />
           <Route path="impressao" element={<RequirePerm perm="admin.loja"><PrintAdmin /></RequirePerm>} />
           <Route path="loja" element={<RequirePerm perm="admin.loja"><StoreAdmin /></RequirePerm>} />
           <Route path="ifood" element={<RequirePerm perm="admin.loja"><IfoodAdmin /></RequirePerm>} />

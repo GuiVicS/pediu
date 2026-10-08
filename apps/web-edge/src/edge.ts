@@ -85,8 +85,8 @@ export class Bundles {
 
 /** HTML da loja: injeta título, descrição, cor e os dados que a tela precisa (slug, versão) no lugar de <!--pediu-head-->. */
 /** Apps de operação instaláveis separadamente (cada um abre direto na própria tela). */
-export const PWA_APPS: Record<string, { label: string; start: string }> = {
-  painel: { label: 'Painel', start: '/painel' }, pdv: { label: 'PDV', start: '/pdv' }, garcom: { label: 'Garçom', start: '/garcom' }, entregador: { label: 'Entregador', start: '/entregador' },
+export const PWA_APPS: Record<string, { label: string; start: string; color: string }> = {
+  painel: { label: 'Painel', start: '/painel', color: '#0091FF' }, pdv: { label: 'PDV', start: '/pdv', color: '#16A34A' }, garcom: { label: 'Garçom', start: '/garcom', color: '#F59E0B' }, entregador: { label: 'Entregador', start: '/entregador', color: '#7C3AED' },
 };
 export function appForPath(path: string): string | null {
   const seg = path.split('/')[1] ?? '';
@@ -105,9 +105,12 @@ export function manifestFor(s: Resolved, app: string | null = null) {
   const a = app ? PWA_APPS[app] : undefined;
   // Chrome só oferece "instalar" com ícone de pelo menos 192 px: sem logo da loja (ou nos apps de operação) usamos a marca da plataforma
   const brand = [{ src: '/brand/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' }, { src: '/brand/mark-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' }];
-  const icons = !a && s.iconUrl ? [{ src: s.iconUrl, sizes: '512x512', purpose: 'any' }] : brand;
-  // cada app de operação é uma instalação própria (id distinto) que abre direto na sua tela
-  return { id: a ? a.start : '/', name: a ? `${s.name} · ${a.label}` : s.name, short_name: a ? a.label : s.name.slice(0, 14), start_url: a ? `${a.start}?source=pwa` : '/?source=pwa', scope: '/', display: 'standalone', lang: 'pt-BR', background_color: '#ffffff', theme_color: s.themeColor ?? '#0091FF', icons };
+  // cada app de operação tem o próprio ícone (cor + símbolo), para não ficarem iguais na tela inicial do celular
+  const appIcons = (k: string) => [192, 512].flatMap((n) => (['any', 'maskable'] as const).map((purpose) => ({ src: `/brand/apps/${k}-${n}.png`, sizes: `${n}x${n}`, type: 'image/png', purpose })));
+  const icons = a ? appIcons(app!) : s.iconUrl ? [{ src: s.iconUrl, sizes: '512x512', purpose: 'any' }] : brand;
+  // cada app de operação é uma instalação própria: id e escopo próprios (/pdv, /garcom…). A loja fica com "/", e o escopo mais
+  // específico vence: um link do PDV abre no app do PDV, não no app da loja. O login de cada app fica dentro do escopo (/pdv/entrar).
+  return { id: a ? a.start : '/', name: a ? `${s.name} · ${a.label}` : s.name, short_name: a ? a.label : s.name.slice(0, 14), start_url: a ? `${a.start}?source=pwa` : '/?source=pwa', scope: a ? a.start : '/', display: 'standalone', lang: 'pt-BR', background_color: '#ffffff', theme_color: a ? a.color : s.themeColor ?? '#0091FF', icons };
 }
 
 /** Mesmo nome do parâmetro e do cookie usados pela API (apps/api/src/orders.ts) e pelo @pediu/shared. */

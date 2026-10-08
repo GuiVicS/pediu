@@ -5,6 +5,7 @@ import { useCollection, useKV } from '@/lib/data';
 import { brl } from '@/lib/format';
 import { Field, Modal, Toggle } from '@/ui/kit';
 import { PageHeader, useToast } from './AdminUI';
+import { PaymentMethodsSection } from './PaymentMethods';
 
 type ZDraft = Omit<DeliveryZone, 'id'> & { id?: string };
 
@@ -23,7 +24,7 @@ export default function StoreAdmin() {
 
   return (
     <>
-      <PageHeader title="Loja e entrega" subtitle="Dados do estabelecimento, horários e regiões de entrega" actions={
+      <PageHeader title="Loja e entrega" subtitle="Dados do estabelecimento, horários, regiões de entrega e formas de pagamento" actions={
         <button className="btn" disabled={!dirty} onClick={async () => { await saveStore({ ...Object.fromEntries([...Object.keys(STORE_DEFAULTS), 'timezone'].filter((k) => k in form).map((k) => [k, (form as unknown as Record<string, unknown>)[k]])), hours: form.hours.map(({ day, closed, open, close }) => ({ day, closed, open, close })) } as Store); toast('Dados da loja salvos'); }}><Save size={14} /> Salvar alterações</button>
       } />
       <div className="grid gap-5 lg:grid-cols-2">
@@ -75,6 +76,8 @@ export default function StoreAdmin() {
           ))}
         </div>
       </section>
+
+      <PaymentMethodsSection />
 
       <Modal open={!!zone} onClose={() => setZone(null)} title={zone?.id ? 'Editar região' : 'Nova região'}
         footer={<><button className="btn-ghost" onClick={() => setZone(null)}><X size={14} /> Cancelar</button><button className="btn" disabled={!zone?.name.trim()} onClick={async () => { if (zone) { await zones.save(zone); setZone(null); } }}><Save size={14} /> Salvar</button></>}>

@@ -4,7 +4,7 @@ import { withPlatform, withTenant, type Q } from '@pediu/db';
 import { can, decryptSecret, encryptSecret } from '@pediu/shared';
 import type { Ctx } from './context.js';
 import { openCashSessionId } from './pdv.js';
-import { GatewayError, TXID_RE, mercadoPago, newTxid, sicoob, verifyMpSignature, type MercadoPagoApi, type MpCreds, type MpPayment, type SicoobApi, type SicoobCreds } from './gateways.js';
+import { GatewayError, TXID_RE, mercadoPago, newTxid, sicoob, verifyMpSignature, type MercadoPagoApi, type MpCardInput, type MpCreds, type MpPayment, type SicoobApi, type SicoobCreds } from './gateways.js';
 import { audit, fail, parse } from './http.js';
 import { afterOrder } from './orderHooks.js';
 import { staffGuard } from './staff.js';
@@ -20,14 +20,20 @@ async function loadCreds<T>(ctx: Ctx, q: Q, storeId: string, provider: Provider)
   const [g] = await q`select credentials_enc from store_gateways where store_id = ${storeId} and provider = ${provider} and status = 'ativo'`;
   return g ? (JSON.parse(decryptSecret(g.credentials_enc, ctx.ring)) as T) : null;
 }
-export const gatewayConfigured = async (ctx: Ctx, storeId: string, provider: Provider) =>
-  withPlatform(ctx.pools, async (q) => !!(await q`select 1 as x from store_gateways where store_id = ${storeId} and provider = ${provider} and status = 'ativo'`)[0]);
+/**
+ * Gateway pronto para cobrar, consultado na transação de quem chama (a API de loja lê estas colunas, nunca as credenciais).
+ * Cartão (checkout transparente) exige também a chave pública do Mercado Pago.
+ */
+export const gatewayReady = async (q: Q, storeId: string, provider: Provider, method: 'pix' | 'card' = 'pix') =>
+  !!(await q`select 1 as x from store_gateways where store_id = ${storeId} and provider = ${provider} and status = 'ativo'
+             and (${method} <> 'card' or coalesce(meta->>'publicKey', '') <> '')`)[0];
 
 export interface StartPayment {
   tenantId: string; storeId: string; orderId: string; orderNumber: number; amountCents: number; slug: string;
   method: 'pix' | 'card'; gateway: Provider; customer: { name: string; email?: string; document?: string };
 }
-export interface StartedPayment { id: string; method: 'pix' | 'card'; qrCode?: string; checkoutUrl?: string; expiresAt: string }
+/** Cartão: devolve a chave pública e o valor para o formulário de cartão (Card Payment Brick) abrir dentro da loja. */
+export interface StartedPayment { id: string; method: 'pix' | 'card'; qrCode?: string; expiresAt: string; publicKey?: string; amountCents?: number }
 
 /** Cria a cobrança no gateway e grava `order_payments`. O pedido continua 'aguardando' até o webhook (ou a conciliação) confirmar. */
 export async function startOnlinePayment(ctx: Ctx, p: StartPayment): Promise<StartedPayment> {
@@ -50,9 +56,9 @@ export async function startOnlinePayment(ctx: Ctx, p: StartPayment): Promise<Sta
         await q`update order_payments set external_id = ${r.id}, qr_code = ${r.qrCode} where id = ${id}`;
         return { id, method: 'pix' as const, qrCode: r.qrCode, expiresAt: expiresAt.toISOString() };
       }
-      const pref = await mp.createPreference({ title: `Pedido #${p.orderNumber}`, amountCents: p.amountCents, reference: id, notificationUrl: url, backUrl: `${ctx.publicUrl ?? ''}/acompanhar`, expiresAt });
-      await q`update order_payments set checkout_url = ${pref.url} where id = ${id}`;
-      return { id, method: 'card' as const, checkoutUrl: pref.url, expiresAt: expiresAt.toISOString() };
+      // checkout transparente: a cobrança só é criada quando o cliente envia o cartão (payCard); aqui só abrimos o pagamento
+      if (!creds.publicKey) throw new GatewayError('Cartão online exige a chave pública do Mercado Pago (Integrações → Mercado Pago).', 409);
+      return { id, method: 'card' as const, expiresAt: expiresAt.toISOString(), publicKey: creds.publicKey, amountCents: p.amountCents };
     }
     const creds = await loadCreds<SicoobCreds>(ctx, q, p.storeId, 'sicoob');
     if (!creds) throw new GatewayError('Sicoob não configurado nesta loja.', 409);
@@ -112,6 +118,48 @@ async function closePayment(ctx: Ctx, paymentId: string, status: 'recusado' | 'c
   if (r) await afterOrder(ctx, r, { kind: 'status', id: r.orderId, number: r.number, orderType: r.type, status: 'cancelado' });
 }
 
+/** Motivos de recusa do Mercado Pago em linguagem de cliente (status_detail). */
+const CARD_REJECT: Record<string, string> = {
+  cc_rejected_bad_filled_card_number: 'Confira o número do cartão.', cc_rejected_bad_filled_date: 'Confira a validade do cartão.',
+  cc_rejected_bad_filled_security_code: 'Confira o código de segurança (CVV).', cc_rejected_bad_filled_other: 'Confira os dados do cartão.',
+  cc_rejected_insufficient_amount: 'O cartão não tem limite suficiente.', cc_rejected_call_for_authorize: 'O banco pediu autorização: ligue para o emissor do cartão e tente de novo.',
+  cc_rejected_card_disabled: 'O cartão está bloqueado ou inativo. Ative-o com o banco ou use outro.', cc_rejected_duplicated_payment: 'Esse pagamento já foi feito. Se precisar pagar de novo, use outro cartão.',
+  cc_rejected_high_risk: 'O pagamento foi recusado por segurança. Use outro cartão ou o Pix.', cc_rejected_max_attempts: 'Limite de tentativas atingido. Use outro cartão ou o Pix.',
+  cc_rejected_blacklist: 'Não foi possível usar este cartão. Use outro cartão ou o Pix.',
+};
+export type CardResult = { status: 'aprovado' } | { status: 'em_analise' } | { status: 'recusado'; message: string };
+
+/**
+ * Checkout transparente: cobra o cartão (já tokenizado no navegador) do pagamento pendente do pedido.
+ * Recusa não cancela o pedido: o cliente corrige e tenta de novo até o pagamento vencer.
+ * O valor cobrado é sempre o do servidor (order_payments), nunca o que o navegador mandar.
+ */
+export async function payCard(ctx: Ctx, trackingToken: string, card: MpCardInput): Promise<CardResult | 'not_found' | 'not_pending'> {
+  const [p] = await withPlatform(ctx.pools, (q) => q`select p.id, p.store_id, p.amount_cents, p.status, p.expires_at, p.external_id, o.number, o.status as order_status
+    from orders o join order_payments p on p.order_id = o.id and p.store_id = o.store_id
+    where o.tracking_token = ${trackingToken} and p.provider = 'mercadopago' and p.method = 'card' order by p.created_at desc limit 1`);
+  if (!p) return 'not_found';
+  if (p.status !== 'pendente' || p.order_status !== 'aguardando' || (p.expires_at && new Date(p.expires_at) < ctx.clock.now())) return 'not_pending';
+  const creds = await withPlatform(ctx.pools, (q) => loadCreds<MpCreds>(ctx, q, p.store_id, 'mercadopago'));
+  if (!creds) throw new GatewayError('Mercado Pago não configurado nesta loja.', 409);
+  // uma chave por tentativa (o mesmo token de cartão reenviado não cobra duas vezes; um cartão novo é outra tentativa)
+  const attempt = await withPlatform(ctx.pools, async (q) => (await q`update order_payments set attempts = attempts + 1 where id = ${p.id} returning attempts`)[0]!.attempts as number);
+  const r = await mpApi(ctx, creds).createCardPayment({ amountCents: p.amount_cents, description: `Pedido #${p.number}`, reference: p.id, card,
+    notificationUrl: ctx.publicUrl ? `${ctx.publicUrl}/v1/webhooks/mercadopago?store=${p.store_id}` : undefined, idempotencyKey: `${p.id}-${attempt}` });
+  if (r.status === 'approved') {
+    await withPlatform(ctx.pools, (q) => q`update order_payments set external_id = ${r.id} where id = ${p.id}`);
+    const c = await confirmPayment(ctx, p.id, r.amountCents, r.id);
+    return c === 'amount_mismatch' || c === 'not_found' ? { status: 'em_analise' } : { status: 'aprovado' };
+  }
+  if (r.status === 'in_process' || r.status === 'pending' || r.status === 'authorized') {
+    // em análise: guarda o id; o webhook (ou a conciliação a cada 30 s) confirma ou recusa
+    await withPlatform(ctx.pools, (q) => q`update order_payments set external_id = ${r.id} where id = ${p.id}`);
+    return { status: 'em_analise' };
+  }
+  ctx.telemetry?.log({ level: 'info', service: 'payments', event: 'payment.card_rejected', message: `Cartão recusado no pedido #${p.number}: ${r.statusDetail ?? r.status}`, storeId: p.store_id, data: { paymentId: p.id } });
+  return { status: 'recusado', message: CARD_REJECT[r.statusDetail ?? ''] ?? 'O cartão foi recusado. Confira os dados, use outro cartão ou pague com Pix.' };
+}
+
 /** Rede de segurança do webhook: consulta os pagamentos pendentes no gateway e expira os vencidos. Roda a cada 30 s. */
 export async function reconcilePayments(ctx: Ctx, nowMs = ctx.clock.now().getTime()): Promise<{ checked: number; confirmed: number; expired: number }> {
   const pending = await withPlatform(ctx.pools, (q) => q`select id, store_id, provider, method, external_id, txid, amount_cents, expires_at from order_payments where status = 'pendente' order by created_at limit 200`);
@@ -152,17 +200,24 @@ export function paymentRoutes(app: FastifyInstance, ctx: Ctx) {
 
   const save = async (s: { tenantId: string; storeId: string; staffId: string }, provider: Provider, creds: unknown, meta: object, ip: string) =>
     withTenant(ctx.pools, s.tenantId, async (q) => {
-      await q`insert into store_gateways (store_id, tenant_id, provider, credentials_enc, status, meta) values (${s.storeId}, ${s.tenantId}, ${provider}, ${encryptSecret(JSON.stringify(creds), ctx.ring)}, 'ativo', ${JSON.stringify(meta)}::jsonb)
-              on conflict (store_id, provider) do update set credentials_enc = excluded.credentials_enc, status = 'ativo', meta = excluded.meta, updated_at = now()`;
+      // apaga e insere (não "on conflict do update"): o role da API de loja não pode LER credentials_enc, e o upsert exigiria essa leitura
+      await q`delete from store_gateways where store_id = ${s.storeId} and provider = ${provider}`;
+      await q`insert into store_gateways (store_id, tenant_id, provider, credentials_enc, status, meta) values (${s.storeId}, ${s.tenantId}, ${provider}, ${encryptSecret(JSON.stringify(creds), ctx.ring)}, 'ativo', ${JSON.stringify(meta)}::jsonb)`;
+      await q`insert into store_apps (store_id, tenant_id, app, installed_by) values (${s.storeId}, ${s.tenantId}, ${provider}, ${s.staffId}) on conflict do nothing`;   // conectar = instalar o app
       await audit(q, { actorKind: 'staff', actorId: s.staffId, tenantId: s.tenantId, storeId: s.storeId, action: `gateway.${provider}.saved`, ip });
     });
 
   app.put(`${G}/mercadopago`, { preHandler: adm }, async (req, reply) => {
     const s = req.staff!;
-    const b = parse(z.object({ accessToken: z.string().regex(/^(APP_USR|TEST)-[A-Za-z0-9-]{20,}$/, 'Access token do Mercado Pago inválido'), webhookSecret: z.string().min(8).max(200).optional() }), req.body, reply); if (!b) return;
+    const b = parse(z.object({
+      accessToken: z.string().regex(/^(APP_USR|TEST)-[A-Za-z0-9-]{20,}$/, 'Access token do Mercado Pago inválido'),
+      // chave pública: obrigatória para o cartão no checkout transparente (o formulário de cartão roda no navegador do cliente)
+      publicKey: z.string().regex(/^(APP_USR|TEST)-[A-Za-z0-9-]{20,}$/, 'Public key do Mercado Pago inválida').optional(),
+      webhookSecret: z.string().min(8).max(200).optional(),
+    }).refine((v) => !v.publicKey || v.publicKey.startsWith('TEST-') === v.accessToken.startsWith('TEST-'), 'Use a public key e o access token do mesmo ambiente (os dois de produção ou os dois de teste).'), req.body, reply); if (!b) return;
     try {
       const me = await mpApi(ctx, { accessToken: b.accessToken }).whoami();                  // confere o token antes de gravar
-      await save(s, 'mercadopago', b, { account: me.nickname, accountId: me.id, test: b.accessToken.startsWith('TEST-') }, req.ip);
+      await save(s, 'mercadopago', b, { account: me.nickname, accountId: me.id, test: b.accessToken.startsWith('TEST-'), publicKey: b.publicKey ?? null }, req.ip);
       return { ok: true, account: me.nickname };
     } catch (e) { return e instanceof GatewayError ? fail(reply, 422, 'invalid_credentials', e.status === 401 ? 'O Mercado Pago recusou este token.' : 'Não foi possível validar o token agora.') : (() => { throw e; })(); }
   });
@@ -190,6 +245,7 @@ export function paymentRoutes(app: FastifyInstance, ctx: Ctx) {
     const s = req.staff!; const provider = parse(z.enum(['mercadopago', 'sicoob']), (req.params as { provider: string }).provider, reply); if (!provider) return;
     const n = await withTenant(ctx.pools, s.tenantId, async (q) => {
       const r = await q`delete from store_gateways where store_id = ${s.storeId} and provider = ${provider} returning id`;
+      await q`delete from store_apps where store_id = ${s.storeId} and app = ${provider}`;
       if (r.length) { await q`update payment_methods set online = false, gateway = null where store_id = ${s.storeId} and gateway = ${provider}`; await audit(q, { actorKind: 'staff', actorId: s.staffId, tenantId: s.tenantId, storeId: s.storeId, action: `gateway.${provider}.removed`, ip: req.ip }); }
       return r.length;
     });
@@ -240,6 +296,25 @@ export function paymentRoutes(app: FastifyInstance, ctx: Ctx) {
     return r ?? fail(reply, 404, 'not_found', 'Pagamento não encontrado.');
   });
 
+  // ---- checkout transparente: o navegador envia o token do cartão (Card Payment Brick); autenticado pelo token de acompanhamento ----
+  app.post('/v1/track/:token/card', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const token = parse(z.string().regex(/^[0-9a-f]{64}$/), (req.params as { token: string }).token, reply); if (!token) return;
+    const b = parse(z.object({
+      token: z.string().min(8).max(200), paymentMethodId: z.string().min(2).max(40), issuerId: z.union([z.string(), z.number()]).transform(String).optional(),
+      installments: z.number().int().min(1).max(24),
+      payer: z.object({ email: z.string().email().max(120), identification: z.object({ type: z.string().min(2).max(10), number: z.string().regex(/^\d{11,14}$/) }).optional() }),
+    }), req.body, reply); if (!b) return;
+    try {
+      const r = await payCard(ctx, token, b);
+      if (r === 'not_found') return fail(reply, 404, 'not_found', 'Pagamento não encontrado.');
+      if (r === 'not_pending') return fail(reply, 409, 'not_pending', 'Este pagamento não está mais aberto. Faça o pedido de novo.');
+      return r;
+    } catch (e) {
+      ctx.telemetry?.log({ level: 'error', service: 'payments', event: 'payment.card_failed', message: String((e as Error).message).slice(0, 300) });
+      return fail(reply, 502, 'gateway_error', e instanceof GatewayError && e.status === 409 ? e.message : 'Não foi possível processar o cartão agora. Tente de novo ou pague com Pix.');
+    }
+  });
+
   // ---- webhooks: nunca confiam no corpo; sempre reconsultam o provedor com a credencial da loja ----
   app.post('/v1/webhooks/mercadopago', { config: { rateLimit: { max: 600, timeWindow: '1 minute' } } }, async (req, reply) => {
     const storeId = parse(z.string().uuid(), (req.query as { store?: string }).store, reply); if (!storeId) return;
@@ -252,11 +327,12 @@ export function paymentRoutes(app: FastifyInstance, ctx: Ctx) {
       if (creds.webhookSecret && !verifyMpSignature(creds.webhookSecret, req.headers['x-signature'] as string | undefined, req.headers['x-request-id'] as string | undefined, dataId, ctx.clock.now().getTime())) return fail(reply, 401, 'bad_signature', 'Assinatura inválida.');
       const pay: MpPayment = await mpApi(ctx, creds).getPayment(dataId);
       const row = pay.externalReference && z.string().uuid().safeParse(pay.externalReference).success
-        ? (await withPlatform(ctx.pools, (q) => q`select id from order_payments where id = ${pay.externalReference} and store_id = ${storeId} and provider = 'mercadopago'`))[0] : undefined;
+        ? (await withPlatform(ctx.pools, (q) => q`select id, external_id from order_payments where id = ${pay.externalReference} and store_id = ${storeId} and provider = 'mercadopago'`))[0] : undefined;
       if (!row) return { ok: true };                                                         // pagamento que não é de um pedido desta loja
       if (pay.status === 'approved') await confirmPayment(ctx, row.id, pay.amountCents, pay.id);
-      else if (pay.status === 'rejected') await closePayment(ctx, row.id, 'recusado');
-      else if (pay.status === 'cancelled') await closePayment(ctx, row.id, 'cancelado');
+      // recusa de uma tentativa antiga do cartão não fecha o pagamento: o cliente pode estar tentando outro cartão
+      else if (pay.status === 'rejected' && row.external_id === pay.id) await closePayment(ctx, row.id, 'recusado');
+      else if (pay.status === 'cancelled' && row.external_id === pay.id) await closePayment(ctx, row.id, 'cancelado');
       else if (pay.status === 'refunded' || pay.status === 'charged_back') await withPlatform(ctx.pools, (q) => q`update order_payments set status = 'estornado' where id = ${row.id}`);
       return { ok: true };
     } catch (e) {

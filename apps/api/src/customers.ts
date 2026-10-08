@@ -2,7 +2,7 @@ import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { withPlatform, withTenant } from '@pediu/db';
-import { hashToken } from '@pediu/shared';
+import { hashPassword, hashToken, verifyPassword } from '@pediu/shared';
 import type { Ctx } from './context.js';
 import { loginCodeEmail } from './customerEmail.js';
 import { audit, fail, parse } from './http.js';
@@ -15,8 +15,12 @@ const MAX_ATTEMPTS = 5;               // erros por código
 const MAX_CODES_PER_HOUR = 5;         // códigos pedidos por e-mail/loja
 const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const SESSION_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_PASSWORD_FAILS = 5;         // senhas erradas seguidas antes do bloqueio
+const LOCK_MIN = 15;
+const password = z.string().min(8, 'A senha precisa ter pelo menos 8 caracteres.').max(200);
+let dummyHash: Promise<string> | null = null;   // conta inexistente leva o mesmo tempo que senha errada (não revela quem é cliente)
 
-export interface CustomerSession { sessionId: string; id: string; email: string; name: string; phone: string }
+export interface CustomerSession { sessionId: string; id: string; email: string; name: string; phone: string; via: 'code' | 'password'; hasPassword: boolean }
 
 const email = z.string().trim().toLowerCase().email().max(160);
 const code = z.string().regex(/^\d{6}$/, 'O código tem 6 dígitos.');
@@ -36,13 +40,13 @@ export async function loadCustomer(ctx: Ctx, req: FastifyRequest, store: StoreRe
   const now = ctx.clock.now();
   return withTenant(ctx.pools, store.tenantId, async (q) => {
     const [r] = await q`
-      select s.id as session_id, c.id, c.email, c.name, c.phone
+      select s.id as session_id, s.via, c.id, c.email, c.name, c.phone, c.password_hash is not null as has_password
       from customer_sessions s join store_customers c on c.id = s.customer_id and c.store_id = s.store_id
       where s.token_hash = ${hashToken(token)} and s.store_id = ${store.storeId} and s.revoked_at is null
         and s.expires_at > ${now.toISOString()}::timestamptz and s.last_seen_at > ${new Date(now.getTime() - SESSION_IDLE_MS).toISOString()}::timestamptz`;
     if (!r) return null;
     await q`update customer_sessions set last_seen_at = ${now.toISOString()}::timestamptz where id = ${r.session_id}`;
-    return { sessionId: r.session_id as string, id: r.id as string, email: r.email as string, name: r.name as string, phone: r.phone as string };
+    return { sessionId: r.session_id as string, id: r.id as string, email: r.email as string, name: r.name as string, phone: r.phone as string, via: r.via as 'code' | 'password', hasPassword: !!r.has_password };
   });
 }
 
@@ -58,6 +62,81 @@ const like = (s: string) => `%${s.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
 export function customerRoutes(app: FastifyInstance, ctx: Ctx) {
   const C = '/v1/store/:slug/customer';
   const slugOf = (req: FastifyRequest) => (req.params as { slug: string }).slug;
+
+  /** Abre a sessão do cliente (cookie httpOnly) na transação de quem chama. */
+  const openSession = async (q: Parameters<Parameters<typeof withTenant>[2]>[0], req: FastifyRequest, reply: import('fastify').FastifyReply, store: StoreRef, customerId: string, via: 'code' | 'password') => {
+    const now = ctx.clock.now(); const token = randomBytes(32).toString('base64url');
+    await q`insert into customer_sessions (store_id, tenant_id, customer_id, token_hash, ip, user_agent, expires_at, created_at, last_seen_at, via)
+            values (${store.storeId}, ${store.tenantId}, ${customerId}, ${hashToken(token)}, ${req.ip ?? null}, ${String(req.headers['user-agent'] ?? '').slice(0, 300)},
+                    ${new Date(now.getTime() + SESSION_TTL_MS).toISOString()}::timestamptz, ${now.toISOString()}::timestamptz, ${now.toISOString()}::timestamptz, ${via})`;
+    reply.setCookie(CUSTOMER_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: ctx.cookieSecure, path: '/', maxAge: SESSION_TTL_MS / 1000 });
+  };
+
+  // criar conta com e-mail e senha
+  app.post(`${C}/register`, { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const b = parse(z.object({ name: z.string().trim().min(2, 'Informe seu nome.').max(80), email, phone: z.string().trim().max(20).default(''), password }), req.body, reply); if (!b) return;
+    const store = await publicStore(ctx, slugOf(req));
+    if (!store) return fail(reply, 404, 'not_found', 'Loja não encontrada.');
+    const hash = await hashPassword(b.password);
+    const now = ctx.clock.now();
+    const out = await withTenant(ctx.pools, store.tenantId, async (q) => {
+      const [ex] = await q`select id, password_hash is not null as has_password from store_customers where store_id = ${store.storeId} and email = ${b.email}`;
+      // conta já existe: nunca "assume" a conta de outra pessoa só por saber o e-mail
+      if (ex) return ex.has_password ? 'exists' as const : 'exists_code' as const;
+      const [c] = await q`insert into store_customers (store_id, tenant_id, email, name, phone, password_hash, last_login_at)
+                          values (${store.storeId}, ${store.tenantId}, ${b.email}, ${b.name}, ${b.phone}, ${hash}, ${now.toISOString()}::timestamptz) returning id, email, name, phone`;
+      await openSession(q, req, reply, store, c!.id as string, 'password');
+      return c!;
+    });
+    if (out === 'exists') return fail(reply, 409, 'email_taken', 'Este e-mail já tem conta. Entre com sua senha.');
+    if (out === 'exists_code') return fail(reply, 409, 'email_taken_code', 'Este e-mail já tem conta. Use "Esqueci minha senha" para receber um código e definir a senha.');
+    return reply.status(201).send({ customer: { ...pub(out as { id: string; email: string; name: string; phone: string }), hasPassword: true } });
+  });
+
+  // entrar com e-mail e senha (mensagem única para conta inexistente e senha errada; bloqueio após 5 erros)
+  app.post(`${C}/login`, { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const b = parse(z.object({ email, password: z.string().min(1).max(200) }), req.body, reply); if (!b) return;
+    const store = await publicStore(ctx, slugOf(req));
+    if (!store) return fail(reply, 404, 'not_found', 'Loja não encontrada.');
+    const now = ctx.clock.now();
+    const out = await withTenant(ctx.pools, store.tenantId, async (q) => {
+      const [c] = await q`select id, email, name, phone, password_hash, locked_until from store_customers where store_id = ${store.storeId} and email = ${b.email} for update`;
+      if (!c || !c.password_hash) { await verifyPassword(b.password, await (dummyHash ??= hashPassword('dummy-password'))); return 'invalid' as const; }
+      if (c.locked_until && new Date(c.locked_until) > now) return 'locked' as const;
+      if (!(await verifyPassword(b.password, c.password_hash))) {
+        await q`update store_customers set
+                locked_until = case when failed_attempts + 1 >= ${MAX_PASSWORD_FAILS} then ${new Date(now.getTime() + LOCK_MIN * 60_000).toISOString()}::timestamptz else locked_until end,
+                failed_attempts = case when failed_attempts + 1 >= ${MAX_PASSWORD_FAILS} then 0 else failed_attempts + 1 end
+                where id = ${c.id}`;
+        return 'invalid' as const;
+      }
+      await q`update store_customers set failed_attempts = 0, locked_until = null, last_login_at = ${now.toISOString()}::timestamptz where id = ${c.id}`;
+      await openSession(q, req, reply, store, c.id as string, 'password');
+      return c;
+    });
+    if (out === 'locked') return fail(reply, 423, 'locked', `Muitas tentativas. Tente de novo em ${LOCK_MIN} minutos ou use "Esqueci minha senha".`);
+    if (out === 'invalid') return fail(reply, 401, 'invalid_credentials', 'E-mail ou senha incorretos.');
+    return { customer: { ...pub(out as unknown as { id: string; email: string; name: string; phone: string }), hasPassword: true } };
+  });
+
+  // definir/trocar a senha: exige a atual, exceto logo após entrar pelo código do e-mail (é o "esqueci a senha")
+  app.put(`${C}/password`, { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const b = parse(z.object({ password, currentPassword: z.string().max(200).optional() }), req.body, reply); if (!b) return;
+    const store = await publicStore(ctx, slugOf(req));
+    if (!store) return fail(reply, 404, 'not_found', 'Loja não encontrada.');
+    const c = await loadCustomer(ctx, req, store);
+    if (!c) return fail(reply, 401, 'unauthenticated', 'Entre para continuar.');
+    const hash = await hashPassword(b.password);
+    const out = await withTenant(ctx.pools, store.tenantId, async (q) => {
+      const [row] = await q`select password_hash from store_customers where id = ${c.id} and store_id = ${store.storeId} for update`;
+      if (row?.password_hash && c.via !== 'code' && !(b.currentPassword && (await verifyPassword(b.currentPassword, row.password_hash)))) return 'wrong' as const;
+      await q`update store_customers set password_hash = ${hash}, failed_attempts = 0, locked_until = null where id = ${c.id}`;
+      // as outras sessões caem (quem tinha a senha antiga não continua logado)
+      await q`update customer_sessions set revoked_at = now() where customer_id = ${c.id} and id <> ${c.sessionId} and revoked_at is null`;
+      return 'ok' as const;
+    });
+    return out === 'wrong' ? fail(reply, 401, 'wrong_password', 'A senha atual está incorreta.') : { ok: true };
+  });
 
   // 1) pede o código: sempre responde igual, exista a conta ou não (não revela quem é cliente)
   app.post(`${C}/code`, { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
@@ -96,7 +175,6 @@ export function customerRoutes(app: FastifyInstance, ctx: Ctx) {
     const store = await publicStore(ctx, slugOf(req));
     if (!store) return fail(reply, 404, 'not_found', 'Loja não encontrada.');
     const now = ctx.clock.now();
-    const token = randomBytes(32).toString('base64url');
     const out = await withTenant(ctx.pools, store.tenantId, async (q) => {
       const [c] = await q`select id, code_hash, attempts, name, phone from customer_login_codes
                           where store_id = ${store.storeId} and email = ${b.email} and consumed_at is null and expires_at > ${now.toISOString()}::timestamptz
@@ -113,13 +191,10 @@ export function customerRoutes(app: FastifyInstance, ctx: Ctx) {
           name = case when store_customers.name = '' then excluded.name else store_customers.name end,
           phone = case when store_customers.phone = '' then excluded.phone else store_customers.phone end
         returning id, email, name, phone`;
-      await q`insert into customer_sessions (store_id, tenant_id, customer_id, token_hash, ip, user_agent, expires_at, created_at, last_seen_at)
-              values (${store.storeId}, ${store.tenantId}, ${cu!.id}, ${hashToken(token)}, ${req.ip ?? null}, ${String(req.headers['user-agent'] ?? '').slice(0, 300)},
-                      ${new Date(now.getTime() + SESSION_TTL_MS).toISOString()}::timestamptz, ${now.toISOString()}::timestamptz, ${now.toISOString()}::timestamptz)`;
+      await openSession(q, req, reply, store, cu!.id as string, 'code');
       return cu!;
     });
     if (!out) return fail(reply, 401, 'invalid_code', 'Código inválido ou vencido. Peça um novo código.');
-    reply.setCookie(CUSTOMER_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: ctx.cookieSecure, path: '/', maxAge: SESSION_TTL_MS / 1000 });
     return { customer: pub(out as { id: string; email: string; name: string; phone: string }) };
   });
 
@@ -128,7 +203,7 @@ export function customerRoutes(app: FastifyInstance, ctx: Ctx) {
     const store = await publicStore(ctx, slugOf(req));
     if (!store) return fail(reply, 404, 'not_found', 'Loja não encontrada.');
     const c = await loadCustomer(ctx, req, store);
-    return { customer: c ? pub(c) : null };
+    return { customer: c ? { ...pub(c), hasPassword: c.hasPassword, via: c.via } : null };
   });
 
   app.put(`${C}/me`, async (req, reply) => {

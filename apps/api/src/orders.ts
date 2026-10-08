@@ -10,7 +10,7 @@ import { audit, fail, parse } from './http.js';
 import { loadMenu } from './menu.js';
 import { afterOrder } from './orderHooks.js';
 import { syncStatusToIfood } from './ifood.js';
-import { gatewayConfigured, startOnlinePayment } from './payments.js';
+import { gatewayReady, startOnlinePayment } from './payments.js';
 import { GatewayError } from './gateways.js';
 import { loadStaff, resolveStore, staffGuard } from './staff.js';
 import { loadCustomer } from './customers.js';
@@ -143,7 +143,7 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
       if (cfg.minOrder && subtotal < toCents(Number(cfg.minOrder))) return { ok: false as const, status: 422, code: 'below_minimum', message: `Pedido mínimo: R$ ${Number(cfg.minOrder).toFixed(2).replace('.', ',')}.` };
       const [pay] = await q`select name, type, online, gateway from payment_methods where id = ${b.paymentId} and store_id = ${store.storeId} and active`;
       if (!pay) return { ok: false as const, status: 422, code: 'invalid_payment', message: 'Forma de pagamento indisponível.' };
-      if (pay.online && !(await gatewayConfigured(ctx, store.storeId, pay.gateway))) return { ok: false as const, status: 422, code: 'payment_unavailable', message: 'O pagamento online está indisponível no momento. Escolha outra forma de pagamento.' };
+      if (pay.online && !(await gatewayReady(q, store.storeId, pay.gateway, pay.type === 'credit' ? 'card' : 'pix'))) return { ok: false as const, status: 422, code: 'payment_unavailable', message: 'O pagamento online está indisponível no momento. Escolha outra forma de pagamento.' };
       let fee = 0, zone: { id: string; name: string } | null = null;
       if (b.type === 'delivery') {
         if (!b.address) return { ok: false as const, status: 422, code: 'address_required', message: 'Informe o endereço de entrega.' };

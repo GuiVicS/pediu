@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { get, post } from './api';
 
-/** Cliente da loja (login por código enviado ao e-mail). A sessão fica no cookie; aqui só o estado para as telas. */
-export interface Customer { id: string; email: string; name: string; phone: string }
+/** Cliente da loja (login com e-mail e senha; o código por e-mail serve para "esqueci a senha"). A sessão fica no cookie. */
+export interface Customer { id: string; email: string; name: string; phone: string; hasPassword?: boolean; via?: 'code' | 'password' }
 interface Ctx { customer: Customer | null; ready: boolean; setCustomer: (c: Customer | null) => void; logout: () => Promise<void> }
 const CustomerCtx = createContext<Ctx | null>(null);
 
