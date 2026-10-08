@@ -28,6 +28,8 @@ export const StoreInput = z.object({
   minOrder: money, prepTime: z.number().int().min(0).max(300),
   timezone: z.string().max(60).refine((tz) => { try { new Intl.DateTimeFormat('pt-BR', { timeZone: tz }); return true; } catch { return false; } }, 'Fuso horário inválido (ex.: America/Sao_Paulo)'),
   hours: z.array(z.object({ day: z.number().int().min(0).max(6), closed: z.boolean(), open: hhmm, close: hhmm })).max(7),
+  /** Quantidade de mesas do salão (mapa do app do garçom). */
+  tables: z.number().int().min(0).max(300),
 }).partial();
 export type StoreInput = z.infer<typeof StoreInput>;
 

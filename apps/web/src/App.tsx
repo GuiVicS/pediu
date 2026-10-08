@@ -28,6 +28,7 @@ import DomainsAdmin from '@/admin/DomainsAdmin';
 import PdvApp from '@/apps/PdvApp';
 import WaiterApp from '@/apps/WaiterApp';
 import CourierApp from '@/apps/CourierApp';
+import TotemApp from '@/apps/TotemApp';
 
 /** Quem já está logado e abre /painel sem permissão vai para a própria área. */
 function PanelHome() { const { me } = useSession(); return me && HOME[me.role] !== '/painel' ? <Navigate to={HOME[me.role]} replace /> : <Dashboard />; }
@@ -43,6 +44,8 @@ export default function App() {
         <Route path="/pdv" element={<RequirePerm perm="pdv"><PdvApp /></RequirePerm>} />
         <Route path="/garcom" element={<RequirePerm perm="garcom"><WaiterApp /></RequirePerm>} />
         <Route path="/entregador" element={<RequirePerm perm="motoboy"><CourierApp /></RequirePerm>} />
+        {/* totem de mesa: o aparelho usa o próprio token (pareado no painel), sem login de funcionário */}
+        <Route path="/totem" element={<TotemApp />} />
 
         <Route path="/painel" element={<RequirePerm perm="admin.dashboard"><AdminLayout /></RequirePerm>}>
           <Route index element={<PanelHome />} />

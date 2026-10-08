@@ -86,7 +86,7 @@ export class Bundles {
 /** HTML da loja: injeta título, descrição, cor e os dados que a tela precisa (slug, versão) no lugar de <!--pediu-head-->. */
 /** Apps de operação instaláveis separadamente (cada um abre direto na própria tela). */
 export const PWA_APPS: Record<string, { label: string; start: string; color: string }> = {
-  painel: { label: 'Painel', start: '/painel', color: '#0091FF' }, pdv: { label: 'PDV', start: '/pdv', color: '#16A34A' }, garcom: { label: 'Garçom', start: '/garcom', color: '#F59E0B' }, entregador: { label: 'Entregador', start: '/entregador', color: '#7C3AED' },
+  painel: { label: 'Painel', start: '/painel', color: '#0091FF' }, pdv: { label: 'PDV', start: '/pdv', color: '#16A34A' }, garcom: { label: 'Garçom', start: '/garcom', color: '#F59E0B' }, entregador: { label: 'Entregador', start: '/entregador', color: '#7C3AED' }, totem: { label: 'Totem', start: '/totem', color: '#DC2626' },
 };
 export function appForPath(path: string): string | null {
   const seg = path.split('/')[1] ?? '';

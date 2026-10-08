@@ -20,6 +20,8 @@ export interface DayHours { day: number; label?: string; closed: boolean; open: 
 export interface Store {
   name: string; slogan: string; phone: string; address: string; city: string; state: string;
   mode: 'auto' | 'open' | 'closed'; closedMessage: string; minOrder: number; prepTime: number; hours: DayHours[];
+  /** mesas do salão (mapa do garçom) */
+  tables?: number;
 }
 export const STORE_DEFAULTS: Store = { name: '', slogan: '', phone: '', address: '', city: '', state: '', mode: 'auto', closedMessage: 'Estamos fechados no momento. Volte no nosso horário de funcionamento!', minOrder: 0, prepTime: 30, hours: [] };
 export const DAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -38,7 +40,7 @@ export interface DeliveryZone { id: string; name: string; fee: number; eta: numb
 
 export type OrderStatus = 'aguardando' | 'novo' | 'preparo' | 'pronto' | 'saiu' | 'entregue' | 'cancelado';
 export type OrderType = 'delivery' | 'retirada' | 'mesa';
-export interface ApiOrderItem { order_id: string; name: string; qty: number; unit_cents: number; total_cents: number; note: string; addons: { group: string; name: string; priceCents: number }[] }
+export interface ApiOrderItem { order_id: string; name: string; qty: number; unit_cents: number; total_cents: number; note: string; addons: { group: string; name: string; priceCents: number }[]; created_at?: string }
 export interface ApiOrder {
   id: string; number: number; channel: 'loja' | 'pdv' | 'garcom' | 'ifood'; type: OrderType; status: OrderStatus;
   customer_name: string; customer_phone: string; address: string; table_number: number | null; note: string;
@@ -46,6 +48,8 @@ export interface ApiOrder {
   paid: boolean; paid_at: string | null; paid_type?: 'pix' | 'cash' | 'credit' | 'debit' | 'voucher' | null; payment_mode?: 'tela' | 'externo' | null;
   cash_received_cents?: number | null; change_cents?: number | null; payment_ref?: string | null; courier_id: string | null; created_at: string; accepted_at: string | null; ready_at: string | null; dispatched_at: string | null; delivered_at: string | null;
   cancelled_at: string | null; cancel_reason: string | null; items: ApiOrderItem[];
+  /** mesa: pessoas e quando o garçom pediu a conta */
+  guests?: number | null; bill_requested_at?: string | null;
 }
 
 export interface CartLine {

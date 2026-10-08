@@ -6,7 +6,8 @@ export type BusEvent =
   | { type: 'order'; kind: 'created' | 'status' | 'items' | 'paid'; id: string; number: number; orderType: string; status: string }
   | { type: 'menu'; collection: string }
   | { type: 'print'; jobId: string; status: string; error?: string | null; orderId?: string | null }
-  | { type: 'agent'; agentId: string; online: boolean };
+  | { type: 'agent'; agentId: string; online: boolean }
+  | { type: 'call'; table: number; kind: 'garcom' | 'conta' };   // totem de mesa chamando o garçom / pedindo a conta
 
 type Listener = (e: BusEvent) => void;
 

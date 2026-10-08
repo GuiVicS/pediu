@@ -6,6 +6,7 @@ import { brl } from '@/lib/format';
 import { Field, Modal, Toggle } from '@/ui/kit';
 import { PageHeader, useToast } from './AdminUI';
 import { PaymentMethodsSection } from './PaymentMethods';
+import { TotemsSection } from './TotemsSection';
 
 type ZDraft = Omit<DeliveryZone, 'id'> & { id?: string };
 
@@ -42,6 +43,7 @@ export default function StoreAdmin() {
             <Field label="UF"><input className="input" maxLength={2} value={form.state} onChange={(e) => set('state', e.target.value.toUpperCase())} /></Field>
           </div>
           <Field label="Tempo médio de preparo (min)"><input type="number" min={0} className="input" value={form.prepTime} onChange={(e) => set('prepTime', Number(e.target.value))} /></Field>
+          <Field label="Mesas no salão" hint="Quantas mesas aparecem no app do garçom (0 = sem atendimento em mesa)."><input type="number" min={0} max={300} className="input" value={form.tables ?? 20} onChange={(e) => set('tables', Math.max(0, Math.min(300, Number(e.target.value) || 0)))} /></Field>
         </section>
 
         <section className="card space-y-3 p-4">
@@ -78,6 +80,7 @@ export default function StoreAdmin() {
       </section>
 
       <PaymentMethodsSection />
+      <TotemsSection />
 
       <Modal open={!!zone} onClose={() => setZone(null)} title={zone?.id ? 'Editar região' : 'Nova região'}
         footer={<><button className="btn-ghost" onClick={() => setZone(null)}><X size={14} /> Cancelar</button><button className="btn" disabled={!zone?.name.trim()} onClick={async () => { if (zone) { await zones.save(zone); setZone(null); } }}><Save size={14} /> Salvar</button></>}>
