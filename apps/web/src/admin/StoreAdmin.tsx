@@ -5,6 +5,8 @@ import { useCollection, useKV } from '@/lib/data';
 import { brl } from '@/lib/format';
 import { Field, Modal, Toggle } from '@/ui/kit';
 import { PageHeader, useToast } from './AdminUI';
+import { PaymentMethodsSection } from './PaymentMethods';
+import { TotemsSection } from './TotemsSection';
 
 type ZDraft = Omit<DeliveryZone, 'id'> & { id?: string };
 
@@ -23,7 +25,7 @@ export default function StoreAdmin() {
 
   return (
     <>
-      <PageHeader title="Loja e entrega" subtitle="Dados do estabelecimento, horários e regiões de entrega" actions={
+      <PageHeader title="Loja e entrega" subtitle="Dados do estabelecimento, horários, regiões de entrega e formas de pagamento" actions={
         <button className="btn" disabled={!dirty} onClick={async () => { await saveStore({ ...Object.fromEntries([...Object.keys(STORE_DEFAULTS), 'timezone'].filter((k) => k in form).map((k) => [k, (form as unknown as Record<string, unknown>)[k]])), hours: form.hours.map(({ day, closed, open, close }) => ({ day, closed, open, close })) } as Store); toast('Dados da loja salvos'); }}><Save size={14} /> Salvar alterações</button>
       } />
       <div className="grid gap-5 lg:grid-cols-2">
@@ -41,6 +43,7 @@ export default function StoreAdmin() {
             <Field label="UF"><input className="input" maxLength={2} value={form.state} onChange={(e) => set('state', e.target.value.toUpperCase())} /></Field>
           </div>
           <Field label="Tempo médio de preparo (min)"><input type="number" min={0} className="input" value={form.prepTime} onChange={(e) => set('prepTime', Number(e.target.value))} /></Field>
+          <Field label="Mesas no salão" hint="Quantas mesas aparecem no app do garçom (0 = sem atendimento em mesa)."><input type="number" min={0} max={300} className="input" value={form.tables ?? 20} onChange={(e) => set('tables', Math.max(0, Math.min(300, Number(e.target.value) || 0)))} /></Field>
         </section>
 
         <section className="card space-y-3 p-4">
@@ -75,6 +78,9 @@ export default function StoreAdmin() {
           ))}
         </div>
       </section>
+
+      <PaymentMethodsSection />
+      <TotemsSection />
 
       <Modal open={!!zone} onClose={() => setZone(null)} title={zone?.id ? 'Editar região' : 'Nova região'}
         footer={<><button className="btn-ghost" onClick={() => setZone(null)}><X size={14} /> Cancelar</button><button className="btn" disabled={!zone?.name.trim()} onClick={async () => { if (zone) { await zones.save(zone); setZone(null); } }}><Save size={14} /> Salvar</button></>}>

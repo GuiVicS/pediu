@@ -10,7 +10,7 @@ import { audit, fail, parse } from './http.js';
 import { loadMenu } from './menu.js';
 import { afterOrder } from './orderHooks.js';
 import { syncStatusToIfood } from './ifood.js';
-import { gatewayConfigured, startOnlinePayment } from './payments.js';
+import { gatewayReady, startOnlinePayment } from './payments.js';
 import { GatewayError } from './gateways.js';
 import { loadStaff, resolveStore, staffGuard } from './staff.js';
 import { loadCustomer } from './customers.js';
@@ -19,7 +19,7 @@ import { evaluateCoupon, redeemCoupon } from './coupons.js';
 
 const uuid = z.string().uuid();
 const selection = z.array(z.object({ groupId: uuid, addonIds: z.array(uuid).max(30) })).max(20).default([]);
-const lineIn = z.object({ productId: uuid, qty: z.number().int().min(1).max(50), note: z.string().max(200).default(''), addons: selection });
+export const lineIn = z.object({ productId: uuid, qty: z.number().int().min(1).max(50), note: z.string().max(200).default(''), addons: selection });
 
 /** Calcula as linhas SEMPRE a partir do banco: do cliente só vêm ids e quantidades. */
 export async function buildLines(q: Q, storeId: string, lines: z.infer<typeof lineIn>[]) {
@@ -48,11 +48,12 @@ const nextNumber = async (q: Q, storeId: string, tenantId: string) =>
   (await q`insert into order_counters (store_id, tenant_id, last) values (${storeId}, ${tenantId}, 1001)
            on conflict (store_id) do update set last = order_counters.last + 1 returning last`)[0]!.last as number;
 
-const event = (q: Q, o: { orderId: string; storeId: string; tenantId: string }, actorKind: 'customer' | 'staff' | 'system', actorId: string | null, ev: string, data?: unknown) =>
+export const orderEvent = (q: Q, o: { orderId: string; storeId: string; tenantId: string }, actorKind: 'customer' | 'staff' | 'system', actorId: string | null, ev: string, data?: unknown) =>
   q`insert into order_events (order_id, store_id, tenant_id, actor_kind, actor_id, event, data) values (${o.orderId}, ${o.storeId}, ${o.tenantId}, ${actorKind}, ${actorId}, ${ev}, ${data === undefined ? null : JSON.stringify(data)}::jsonb)`;
+const event = orderEvent;
 
 export async function insertOrder(q: Q, a: {
-  storeId: string; tenantId: string; channel: 'loja' | 'pdv' | 'garcom' | 'ifood'; type: OrderType; lines: NonNullable<Awaited<ReturnType<typeof buildLines>>['lines']>;
+  storeId: string; tenantId: string; channel: 'loja' | 'pdv' | 'garcom' | 'ifood' | 'totem'; type: OrderType; lines: NonNullable<Awaited<ReturnType<typeof buildLines>>['lines']>;
   customerName: string; phone: string; address: string; zoneId: string | null; feeCents: number; table: number | null; note: string; payment: string; changeForCents: number | null;
   createdBy: string | null; paid?: boolean; status?: OrderStatus; customerId?: string | null;
   pay?: PayInfo; cashSessionId?: string | null;
@@ -74,8 +75,28 @@ export async function insertOrder(q: Q, a: {
     await q`insert into order_items (order_id, store_id, tenant_id, product_id, name, qty, unit_cents, total_cents, note, addons, print_zone_id)
             values (${o!.id}, ${a.storeId}, ${a.tenantId}, ${l.productId}, ${l.name}, ${l.qty}, ${l.unitCents}, ${l.totalCents}, ${l.note}, ${JSON.stringify(l.addons)}::jsonb, ${l.zoneId})`;
   }
-  await event(q, { orderId: o!.id, storeId: a.storeId, tenantId: a.tenantId }, a.channel === 'loja' ? 'customer' : 'staff', a.createdBy, 'created', { channel: a.channel, total: total });
+  await event(q, { orderId: o!.id, storeId: a.storeId, tenantId: a.tenantId }, a.channel === 'loja' || a.channel === 'totem' ? 'customer' : 'staff', a.createdBy, 'created', { channel: a.channel, total: total });
   return { id: o!.id as string, number: o!.number as number, trackingToken: o!.tracking_token as string, totalCents: total };
+}
+
+/**
+ * Acrescenta itens a uma comanda de mesa aberta (garçom e totem): grava os itens, refaz o total, volta para a cozinha se
+ * estava pronta e desfaz o "conta pedida" (a mesa pediu mais coisa). A comanda já deve estar travada (FOR UPDATE) por quem chama.
+ */
+export async function appendItems(q: Q, o: { id: string; storeId: string; tenantId: string; subtotalCents: number; feeCents: number; discountCents: number },
+  lines: NonNullable<Awaited<ReturnType<typeof buildLines>>['lines']>, actor: { kind: 'staff' | 'customer'; id: string | null }) {
+  const newIds: string[] = [];
+  for (const l of lines) {
+    const [it] = await q`insert into order_items (order_id, store_id, tenant_id, product_id, name, qty, unit_cents, total_cents, note, addons, print_zone_id)
+            values (${o.id}, ${o.storeId}, ${o.tenantId}, ${l.productId}, ${l.name}, ${l.qty}, ${l.unitCents}, ${l.totalCents}, ${l.note}, ${JSON.stringify(l.addons)}::jsonb, ${l.zoneId}) returning id`;
+    newIds.push(it!.id as string);
+  }
+  const add = lines.reduce((n, l) => n + l.totalCents, 0);
+  const subtotal = o.subtotalCents + add;
+  await q`update orders set subtotal_cents = ${subtotal}, total_cents = ${subtotal + o.feeCents - o.discountCents},
+          status = case when status in ('pronto') then 'preparo' else status end, ready_at = case when status = 'pronto' then null else ready_at end, bill_requested_at = null where id = ${o.id}`;
+  await event(q, { orderId: o.id, storeId: o.storeId, tenantId: o.tenantId }, actor.kind, actor.id, 'items_added', { added: lines.length, addedCents: add });
+  return { totalCents: subtotal + o.feeCents - o.discountCents, newIds };
 }
 
 /** O público só enxerga lojas no ar. Rascunho (desenvolvimento), suspensa e arquivada respondem como inexistentes. */
@@ -143,7 +164,7 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
       if (cfg.minOrder && subtotal < toCents(Number(cfg.minOrder))) return { ok: false as const, status: 422, code: 'below_minimum', message: `Pedido mínimo: R$ ${Number(cfg.minOrder).toFixed(2).replace('.', ',')}.` };
       const [pay] = await q`select name, type, online, gateway from payment_methods where id = ${b.paymentId} and store_id = ${store.storeId} and active`;
       if (!pay) return { ok: false as const, status: 422, code: 'invalid_payment', message: 'Forma de pagamento indisponível.' };
-      if (pay.online && !(await gatewayConfigured(ctx, store.storeId, pay.gateway))) return { ok: false as const, status: 422, code: 'payment_unavailable', message: 'O pagamento online está indisponível no momento. Escolha outra forma de pagamento.' };
+      if (pay.online && !(await gatewayReady(q, store.storeId, pay.gateway, pay.type === 'credit' ? 'card' : 'pix'))) return { ok: false as const, status: 422, code: 'payment_unavailable', message: 'O pagamento online está indisponível no momento. Escolha outra forma de pagamento.' };
       let fee = 0, zone: { id: string; name: string } | null = null;
       if (b.type === 'delivery') {
         if (!b.address) return { ok: false as const, status: 422, code: 'address_required', message: 'Informe o endereço de entrega.' };
@@ -194,10 +215,10 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
 
   // ---------------- equipe: PDV, garçom, entregador, painel ----------------
   const S = '/v1/staff/orders';
-  const itemRows = (q: Q, ids: string[]) => q`select order_id, name, qty, unit_cents, total_cents, note, addons, print_zone_id from order_items
+  const itemRows = (q: Q, ids: string[]) => q`select order_id, name, qty, unit_cents, total_cents, note, addons, print_zone_id, created_at from order_items
                                                where order_id in (select x::uuid from jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb) x) order by created_at`;
   const orderCols = `id, number, channel, type, status, customer_name, customer_phone, address, table_number, note, subtotal_cents, fee_cents, discount_cents, total_cents,
-                     payment_method, change_for_cents, paid, paid_at, paid_type, payment_mode, cash_received_cents, change_cents, payment_ref, courier_id, created_at, accepted_at, ready_at, dispatched_at, delivered_at, cancelled_at, cancel_reason`;
+                     payment_method, change_for_cents, paid, paid_at, paid_type, payment_mode, cash_received_cents, change_cents, payment_ref, courier_id, guests, bill_requested_at, created_at, accepted_at, ready_at, dispatched_at, delivered_at, cancelled_at, cancel_reason`;
   void orderCols;
 
   app.get(S, { preHandler: staffGuard(ctx) }, async (req, reply) => {
@@ -208,7 +229,7 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!perms.pedidos && !perms.garcom && !perms.motoboy) return fail(reply, 403, 'forbidden', 'Seu perfil não acessa pedidos.');
     return withTenant(ctx.pools, s.tenantId, async (q) => {
       const rows = await q`select id, number, channel, type, status, customer_name, customer_phone, address, table_number, note, subtotal_cents, fee_cents, discount_cents, total_cents,
-          payment_method, change_for_cents, paid, paid_at, paid_type, payment_mode, cash_received_cents, change_cents, payment_ref, courier_id, created_at, accepted_at, ready_at, dispatched_at, delivered_at, cancelled_at, cancel_reason
+          payment_method, change_for_cents, paid, paid_at, paid_type, payment_mode, cash_received_cents, change_cents, payment_ref, courier_id, guests, bill_requested_at, created_at, accepted_at, ready_at, dispatched_at, delivered_at, cancelled_at, cancel_reason
         from orders where store_id = ${s.storeId}
           and (${qs.open ?? null}::text is null or status not in ('entregue', 'cancelado'))
           and (${qs.status ?? null}::text is null or status = ${qs.status ?? null})
@@ -225,7 +246,7 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
     const s = req.staff!;
     const b = parse(z.object({
       type: z.enum(['delivery', 'retirada', 'mesa']), customerName: z.string().trim().max(80).default(''), phone: z.string().trim().max(20).default(''),
-      address: z.string().trim().max(200).default(''), zoneId: uuid.optional(), table: z.number().int().min(1).max(500).optional(), note: z.string().max(300).default(''),
+      address: z.string().trim().max(200).default(''), zoneId: uuid.optional(), table: z.number().int().min(1).max(500).optional(), guests: z.number().int().min(1).max(99).optional(), note: z.string().max(300).default(''),
       paymentId: uuid.optional(), receiveNow: z.boolean().default(false), lines: z.array(lineIn).min(1).max(60),
       receivedCents: z.number().int().min(0).max(100_000_000).optional(), reference: z.string().trim().max(40).optional(),
       couponCode: z.string().trim().max(30).optional(), customerId: uuid.optional(),
@@ -265,6 +286,7 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
           phone: b.phone, address: zone ? `${b.address} — ${zone.name}` : '', zoneId: zone?.id ?? null, feeCents: fee, table: b.type === 'mesa' ? b.table! : null, note: b.note,
           payment: pay?.name ?? '', changeForCents: null, createdBy: s.staffId, paid: b.receiveNow, status: b.receiveNow ? 'preparo' : 'novo',
           discountCents: coupon?.discountCents ?? 0, customerId: b.customerId ?? null, pay: payInfo, cashSessionId });
+        if (b.type === 'mesa' && b.guests) await q`update orders set guests = ${b.guests} where id = ${o.id}`;
         if (coupon) await redeemCoupon(q, { couponId: coupon.couponId, storeId: s.storeId, tenantId: s.tenantId, orderId: o.id, code: coupon.code, customerId: b.customerId ?? null, phone: b.phone, discountCents: coupon.discountCents });
         return { ok: true as const, o, changeCents: payInfo?.changeCents ?? 0 };
       });
@@ -290,22 +312,45 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
       if (isTerminal(o.status)) return { ok: false as const, status: 422, code: 'closed', message: 'A comanda já foi encerrada.' };
       const built = await buildLines(q, s.storeId, b.lines);
       if ('error' in built) return { ok: false as const, status: 422, code: 'invalid_items', message: built.error! };
-      const newIds: string[] = [];
-      for (const l of built.lines!) {
-        const [it] = await q`insert into order_items (order_id, store_id, tenant_id, product_id, name, qty, unit_cents, total_cents, note, addons, print_zone_id)
-                values (${id}, ${s.storeId}, ${s.tenantId}, ${l.productId}, ${l.name}, ${l.qty}, ${l.unitCents}, ${l.totalCents}, ${l.note}, ${JSON.stringify(l.addons)}::jsonb, ${l.zoneId}) returning id`;
-        newIds.push(it!.id as string);
-      }
-      const add = built.lines!.reduce((n, l) => n + l.totalCents, 0);
-      const subtotal = o.subtotal_cents + add;
-      await q`update orders set subtotal_cents = ${subtotal}, total_cents = ${subtotal + o.fee_cents - o.discount_cents},
-              status = case when status in ('pronto') then 'preparo' else status end, ready_at = case when status = 'pronto' then null else ready_at end where id = ${id}`;
-      await event(q, { orderId: id, storeId: s.storeId, tenantId: s.tenantId }, 'staff', s.staffId, 'items_added', { added: built.lines!.length, addedCents: add });
-      return { ok: true as const, totalCents: subtotal + o.fee_cents - o.discount_cents, newIds, number: o.number as number };
+      const r = await appendItems(q, { id, storeId: s.storeId, tenantId: s.tenantId, subtotalCents: o.subtotal_cents, feeCents: o.fee_cents, discountCents: o.discount_cents }, built.lines!, { kind: 'staff', id: s.staffId });
+      return { ok: true as const, ...r, number: o.number as number };
     });
     if (!out.ok) return fail(reply, out.status, out.code, out.message);
     await afterOrder(ctx, s, { kind: 'items', id, number: out.number, orderType: 'mesa', status: 'preparo', print: ['items_added'], itemIds: out.newIds });
     return { ok: true, totalCents: out.totalCents };
+  });
+
+  // mesa: transferir a comanda, ajustar pessoas e pedir a conta (o caixa vê no PDV; a mesa fica destacada no mapa)
+  app.post(`${S}/:id/mesa`, { preHandler: staffGuard(ctx) }, async (req, reply) => {
+    const s = req.staff!;
+    const id = parse(uuid, (req.params as { id: string }).id, reply); if (!id) return;
+    const b = parse(z.object({ table: z.number().int().min(1).max(500).optional(), guests: z.number().int().min(1).max(99).nullable().optional(), bill: z.boolean().optional() })
+      .refine((v) => v.table !== undefined || v.guests !== undefined || v.bill !== undefined, 'Nada para alterar.'), req.body, reply); if (!b) return;
+    if (!(can(s.role, 'garcom') || can(s.role, 'pdv'))) return fail(reply, 403, 'forbidden', 'Seu perfil não pode alterar comandas.');
+    try {
+      const out = await withTenant(ctx.pools, s.tenantId, async (q) => {
+        const [o] = await q`select id, number, type, status, table_number from orders where id = ${id} and store_id = ${s.storeId} for update`;
+        if (!o) return { ok: false as const, status: 404, code: 'not_found', message: 'Comanda não encontrada.' };
+        if (o.type !== 'mesa') return { ok: false as const, status: 422, code: 'not_table', message: 'Só comandas de mesa.' };
+        if (isTerminal(o.status)) return { ok: false as const, status: 422, code: 'closed', message: 'A comanda já foi encerrada.' };
+        if (b.table !== undefined && b.table !== o.table_number) {
+          await q`update orders set table_number = ${b.table}, customer_name = case when customer_name = ${`Mesa ${o.table_number}`} then ${`Mesa ${b.table}`} else customer_name end where id = ${id}`;
+          await event(q, { orderId: id, storeId: s.storeId, tenantId: s.tenantId }, 'staff', s.staffId, 'table_moved', { from: o.table_number, to: b.table });
+        }
+        if (b.guests !== undefined) await q`update orders set guests = ${b.guests} where id = ${id}`;
+        if (b.bill !== undefined) {
+          await q`update orders set bill_requested_at = case when ${b.bill} then now() else null end where id = ${id}`;
+          await event(q, { orderId: id, storeId: s.storeId, tenantId: s.tenantId }, 'staff', s.staffId, b.bill ? 'bill_requested' : 'bill_cancelled', {});
+        }
+        return { ok: true as const, number: o.number as number, status: o.status as string };
+      });
+      if (!out.ok) return fail(reply, out.status, out.code, out.message);
+      await afterOrder(ctx, s, { kind: 'status', id, number: out.number, orderType: 'mesa', status: out.status, print: [] });   // atualiza mapa e PDV em tempo real
+      return { ok: true };
+    } catch (e) {
+      if ((e as { code?: string }).code === '23505') return fail(reply, 409, 'table_busy', `A mesa ${b.table} já tem uma comanda aberta.`);
+      throw e;
+    }
   });
 
   // mudar o status respeitando o fluxo e o perfil

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Bell, Bike, Calendar, ChevronDown, ClipboardList, ConciergeBell, CreditCard, ExternalLink, Globe, Home, LogOut, Menu, MessageCircle, Monitor, Palette, Printer,
+  Bell, Bike, Blocks, Calendar, ChevronDown, ClipboardList, ConciergeBell, ExternalLink, Globe, Home, LogOut, Menu, MessageCircle, Monitor, Palette, Printer,
   Search, Store as StoreIcon, Tag, Truck, UserCog, Users, UtensilsCrossed, X, type LucideIcon,
 } from 'lucide-react';
 import type { Perm } from '@pediu/shared/browser';
@@ -14,7 +14,7 @@ import { InstallButton } from '@/ui/InstallButton';
 import { ThemeToggle, useApplyPlatformTheme } from '@/ui/platformTheme';
 import { ToastProvider, TopbarSlot } from './AdminUI';
 
-interface Item { to: string; label: string; Icon: LucideIcon; perm: Perm; end?: boolean; children?: [to: string, label: string][] }
+interface Item { to: string; label: string; Icon: LucideIcon; perm: Perm; end?: boolean; children?: [to: string, label: string][]; app?: string }
 
 /** Itens principais (o que o lojista usa todo dia). Itens com `children` abrem os atalhos da área quando ela está ativa. */
 const MAIN: Item[] = [
@@ -24,15 +24,16 @@ const MAIN: Item[] = [
   { to: '/painel/clientes', label: 'Clientes', Icon: Users, perm: 'admin.pedidos' },
   { to: '/painel/cupons', label: 'Cupons', Icon: Tag, perm: 'admin.loja' },
   { to: '/painel/aparencia', label: 'Aparência', Icon: Palette, perm: 'admin.loja', children: [['/painel/aparencia', 'Tema e logo'], ['/painel/banners', 'Banners']] },
-  { to: '/painel/pagamentos', label: 'Pagamentos', Icon: CreditCard, perm: 'admin.loja' },
-  { to: '/painel/loja', label: 'Entrega', Icon: Bike, perm: 'admin.loja' },
+  { to: '/painel/integracoes', label: 'Integrações', Icon: Blocks, perm: 'admin.loja' },
+  { to: '/painel/loja', label: 'Loja e entrega', Icon: Bike, perm: 'admin.loja' },
   { to: '/painel/impressao', label: 'Impressão', Icon: Printer, perm: 'admin.loja' },
   { to: '/painel/dominios', label: 'Domínios', Icon: Globe, perm: 'admin.loja' },
   { to: '/painel/usuarios', label: 'Equipe', Icon: UserCog, perm: 'admin.usuarios' },
 ];
 const MORE: Item[] = [
-  { to: '/painel/whatsapp', label: 'WhatsApp e IA', Icon: MessageCircle, perm: 'admin.pedidos' },
-  { to: '/painel/ifood', label: 'iFood', Icon: Truck, perm: 'admin.loja' },
+  // apps do hub: só aparecem quando instalados em Integrações
+  { to: '/painel/whatsapp', label: 'WhatsApp e IA', Icon: MessageCircle, perm: 'admin.pedidos', app: 'whatsapp' },
+  { to: '/painel/ifood', label: 'iFood', Icon: Truck, perm: 'admin.loja', app: 'ifood' },
   { to: '/pdv', label: 'PDV (caixa)', Icon: Monitor, perm: 'pdv' },
   { to: '/garcom', label: 'Garçom (mesas)', Icon: ConciergeBell, perm: 'garcom' },
   { to: '/entregador', label: 'Entregador', Icon: Bike, perm: 'motoboy' },
@@ -43,6 +44,13 @@ export default function AdminLayout() { return <ToastProvider><Shell /></ToastPr
 function Shell() {
   const { me, can } = useSession();
   const [open, setOpen] = useState(false);
+  // apps instalados no hub (Integrações): o menu esconde iFood e WhatsApp quando não estão instalados
+  const [installed, setInstalled] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    const load = () => get<{ apps: { id: string; installed: boolean }[] }>('/v1/staff/apps').then((r) => setInstalled(new Set(r.apps.filter((a) => a.installed).map((a) => a.id)))).catch(() => setInstalled(null));
+    load(); window.addEventListener('pediu:apps-changed', load); return () => window.removeEventListener('pediu:apps-changed', load);
+  }, []);
+  const visible = (i: Item) => can(i.perm) && (!i.app || !installed || installed.has(i.app));
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const loc = useLocation();
   const { orders } = useOrders({ open: true, limit: 100, sound: true });
@@ -66,8 +74,8 @@ function Shell() {
         <StoreCard />
         <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 pb-3 pt-1" aria-label="Menu do painel">
           {MAIN.filter((i) => can(i.perm)).map((i) => <NavItem key={i.to} item={i} path={loc.pathname} badge={i.to === '/painel/pedidos' ? novos : 0} />)}
-          {MORE.some((i) => can(i.perm)) && <div className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">Mais</div>}
-          {MORE.filter((i) => can(i.perm)).map((i) => <NavItem key={i.to} item={i} path={loc.pathname} badge={0} />)}
+          {MORE.some(visible) && <div className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">Mais</div>}
+          {MORE.filter(visible).map((i) => <NavItem key={i.to} item={i} path={loc.pathname} badge={0} />)}
         </nav>
         <div className="space-y-1 border-t border-sidebar-border p-3 text-sm">
           <InstallButton label="Instalar painel como app" className="flex w-full items-center gap-2 rounded-xl bg-sidebar-primary px-3 py-2 font-medium text-sidebar-primary-foreground hover:bg-sidebar-primary/90" />

@@ -42,7 +42,7 @@ export function ProductModal({ product, onClose }: { product: ProductView; onClo
 
   return (
     <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/60 sm:items-center sm:p-4" onMouseDown={onClose}>
-      <div className="flex max-h-[94vh] w-full flex-col overflow-hidden rounded-t-3xl bg-t-card text-t-fg sm:max-w-xl sm:rounded-t" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="flex max-h-[94vh] w-full flex-col overflow-hidden rounded-t-3xl bg-t-card text-t-fg sm:max-w-xl sm:rounded-theme" onMouseDown={(e) => e.stopPropagation()}>
         <div className="relative shrink-0">
           <Img src={product.imageUrl} alt={product.name} fit={product.imageFit} className="h-48 w-full sm:h-56" />
           <button onClick={onClose} aria-label="Fechar" className="absolute right-3 top-3 rounded-full bg-black/50 p-1.5 text-white"><X size={18} /></button>
@@ -95,7 +95,7 @@ export function ProductModal({ product, onClose }: { product: ProductView; onClo
             <button aria-label="Aumentar" onClick={() => setQty((q) => q + 1)} className="p-1"><Plus size={16} /></button>
           </div>
           <button disabled={missing.length > 0} onClick={add}
-            className="flex-1 rounded-t bg-t-primary py-3 text-sm font-semibold text-t-primary-fg transition hover:opacity-90 disabled:opacity-40">
+            className="flex-1 rounded-theme bg-t-primary py-3 text-sm font-semibold text-t-primary-fg transition hover:opacity-90 disabled:opacity-40">
             {missing.length ? `Escolha: ${missing[0].g.name}` : `Adicionar · ${brl(unit * qty)}`}
           </button>
         </div>

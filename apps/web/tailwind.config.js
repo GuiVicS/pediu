@@ -29,7 +29,8 @@ export default {
         },
       },
       // raio e sombras da plataforma em nomes próprios: rounded-lg/xl e shadow-* continuam como estavam (a loja usa)
-      borderRadius: { t: 'var(--t-radius)', ui: 'var(--radius)', 'ui-sm': 'calc(var(--radius) - 8px)', 'ui-xs': 'calc(var(--radius) - 12px)' },
+      // raio do tema da loja: "theme" (e não "t") porque rounded-t já é o utilitário do Tailwind para só as quinas de cima
+      borderRadius: { theme: 'var(--t-radius)', ui: 'var(--radius)', 'ui-sm': 'calc(var(--radius) - 8px)', 'ui-xs': 'calc(var(--radius) - 12px)' },
       boxShadow: { ui: 'var(--shadow)', 'ui-sm': 'var(--shadow-sm)', 'ui-lg': 'var(--shadow-lg)' },
       fontFamily: { t: 'var(--t-font)', brand: ['Montserrat', 'system-ui', 'sans-serif'] }, // fonte da marca Pediu Lanchou (docs/branding)
     },

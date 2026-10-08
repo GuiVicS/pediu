@@ -20,6 +20,7 @@ export const FEATURES = [
   { key: 'audio_transcription', label: 'Transcrição de áudio', description: 'Transcreve áudios dos clientes para o agente.', available: true, requires: ['ai_agent'] },
   { key: 'image_analysis', label: 'Análise de imagens', description: 'Interpreta fotos, prints e comprovantes enviados pelo cliente.', available: true, requires: ['ai_agent'] },
   { key: 'order_draft', label: 'Montagem de pedido', description: 'Monta rascunho e link de checkout a partir da conversa.', available: true, requires: ['ai_agent'] },
+  { key: 'table_totem', label: 'Totem de mesa', description: 'Tablet na mesa para o cliente pedir sozinho: cardápio com fotos, envio para a comanda da mesa, chamar garçom e pedir a conta.', available: true, requires: [] },
   { key: 'broadcasts', label: 'Disparos', description: 'Envio de mensagens para clientes autorizados (fase posterior).', available: true, requires: ['whatsapp_support'] },
 ] as const satisfies readonly FeatureDef[];
 

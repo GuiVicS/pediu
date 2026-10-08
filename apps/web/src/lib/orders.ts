@@ -58,13 +58,15 @@ export function useOrders({ open = true, status, limit = 150, sound = false, onN
     pay: (id: string, paymentId: string, extra: { receivedCents?: number; reference?: string } = {}) => act(post<{ ok: boolean; totalCents: number; changeCents: number }>(`/v1/staff/orders/${id}/pay`, { paymentId, ...extra })),
     addItems: (id: string, lines: OrderLine[]) => act(post(`/v1/staff/orders/${id}/items`, { lines })),
     create: (body: NewOrder) => act(post<{ id: string; number: number; totalCents: number; changeCents: number }>('/v1/staff/orders', body)),
+    /** mesa: transferir, pessoas e pedir/cancelar a conta */
+    mesa: (id: string, body: { table?: number; guests?: number | null; bill?: boolean }) => act(post<{ ok: boolean }>(`/v1/staff/orders/${id}/mesa`, body)),
     reprint: (id: string, zoneId?: string) => act(post<{ jobs: number }>(`/v1/staff/print/orders/${id}/reprint`, { zoneId })),
   };
 }
 
 export interface OrderLine { productId: string; qty: number; note?: string; addons?: { groupId: string; addonIds: string[] }[] }
 export interface NewOrder {
-  type: 'delivery' | 'retirada' | 'mesa'; customerName?: string; phone?: string; address?: string; zoneId?: string; table?: number; note?: string;
+  type: 'delivery' | 'retirada' | 'mesa'; customerName?: string; phone?: string; address?: string; zoneId?: string; table?: number; guests?: number; note?: string;
   paymentId?: string; receiveNow?: boolean; lines: OrderLine[];
   /** PDV: valor recebido em dinheiro, autorização da maquininha, cupom e cliente da conta. */
   receivedCents?: number; reference?: string; couponCode?: string; customerId?: string;

@@ -4,6 +4,8 @@ import type { Addon, AddonGroup, Banner, Category, DeliveryZone, PaymentMethod, 
 export interface Menu {
   categories: (Category & { image_url?: string })[]; products: Product[]; groups: (AddonGroup & { addons: Addon[] })[];
   banners: Banner[]; featured: string[]; zones: DeliveryZone[]; payments: PaymentMethod[];
+  /** só no cardápio da equipe: mesas do salão */
+  tables?: number;
 }
 /** landingUrl: link da landing page da plataforma (rodapé de todas as lojas); vem da configuração do super admin. */
 export interface StoreCtx { slug: string; theme: Theme; store: Store; status: { open: boolean; label: string }; /** loja ainda em desenvolvimento: só a equipe vê; pedidos desativados */ unpublished: boolean; menu: Menu; landingUrl: string; reload: () => Promise<void> }
@@ -18,6 +20,7 @@ export const useStore = () => {
 export function normalizeMenu(raw: any): Menu {
   const img = (x: any) => x.image_url ?? x.imageUrl ?? '';
   return {
+    ...(typeof raw.tables === 'number' ? { tables: raw.tables } : {}),
     categories: raw.categories.map((c: any, i: number) => ({ id: c.id, name: c.name, imageUrl: img(c), imageFit: c.image_fit ?? 'cover', order: i, active: true, printZoneId: c.print_zone_id ?? null })),
     products: raw.products.map((p: any, i: number) => ({ id: p.id, categoryId: p.category_id, name: p.name, description: p.description ?? '', notes: p.notes ?? '', price: Number(p.price), imageUrl: img(p), imageFit: p.image_fit ?? 'cover',
       prepTime: p.prep_time ?? 0, active: true, available: p.available, order: i, groupIds: p.group_ids ?? [] })),

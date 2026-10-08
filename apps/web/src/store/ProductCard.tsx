@@ -10,7 +10,7 @@ export function ProductCard({ product, onOpen }: { product: ProductView; onOpen:
   return (
     <div
       onClick={() => !unavailable && onOpen(product)}
-      className="group flex h-full cursor-pointer flex-col overflow-hidden rounded-t border border-t-border bg-t-card transition hover:shadow-lg"
+      className="group flex h-full cursor-pointer flex-col overflow-hidden rounded-theme border border-t-border bg-t-card transition hover:shadow-lg"
     >
       <div className="relative aspect-[4/3] overflow-hidden">
         <Img src={product.imageUrl} alt={product.name} fit={product.imageFit} className="h-full w-full transition duration-300 group-hover:scale-105" />

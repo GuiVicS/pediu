@@ -4,7 +4,8 @@ export type StreamEvent =
   | { type: 'order'; kind: 'created' | 'status' | 'items' | 'paid'; id: string; number: number; orderType: string; status: string }
   | { type: 'menu'; collection: string }
   | { type: 'print'; jobId: string; status: string; error?: string | null; orderId?: string | null }
-  | { type: 'agent'; agentId: string; online: boolean };
+  | { type: 'agent'; agentId: string; online: boolean }
+  | { type: 'call'; table: number; kind: 'garcom' | 'conta' };
 
 /**
  * Escuta os eventos da loja (SSE). O navegador reconecta sozinho. Como rede móvel perde eventos, `onResync` também é chamado
@@ -18,7 +19,7 @@ export function useStream(onEvent: (e: StreamEvent) => void, onResync: () => voi
     const open = () => {
       if (closed) return;
       es = new EventSource('/v1/staff/stream');
-      for (const t of ['order', 'menu', 'print', 'agent'] as const) es.addEventListener(t, (m) => { try { ev.current(JSON.parse((m as MessageEvent).data)); } catch { /* ignora */ } });
+      for (const t of ['order', 'menu', 'print', 'agent', 'call'] as const) es.addEventListener(t, (m) => { try { ev.current(JSON.parse((m as MessageEvent).data)); } catch { /* ignora */ } });
       es.addEventListener('ready', () => { if (opened) rs.current(); opened = true; });
     };
     open();

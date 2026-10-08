@@ -24,8 +24,8 @@ body { margin: 0; -webkit-font-smoothing: antialiased; font-family: Inter, syste
   .btn-danger { @apply inline-flex items-center justify-center gap-1.5 rounded-ui-sm border border-destructive/30 bg-card px-3 py-1.5 text-sm font-medium text-destructive transition hover:bg-destructive/10; }
   /* campos e botões da loja (usam o tema: claro ou escuro) */
   .t-input { @apply w-full rounded-lg border border-t-border bg-t-bg px-3 py-2 text-sm text-t-fg outline-none placeholder:text-t-muted-fg focus:border-t-primary focus:ring-2 focus:ring-t-primary/20; }
-  .t-btn { @apply inline-flex items-center justify-center gap-1.5 rounded-t bg-t-primary px-4 py-3 text-sm font-semibold text-t-primary-fg transition hover:opacity-90 disabled:opacity-40; }
-  .t-btn-ghost { @apply inline-flex items-center justify-center gap-1.5 rounded-t border border-t-border px-4 py-3 text-sm font-semibold text-t-fg transition hover:bg-t-muted; }
+  .t-btn { @apply inline-flex items-center justify-center gap-1.5 rounded-theme bg-t-primary px-4 py-3 text-sm font-semibold text-t-primary-fg transition hover:opacity-90 disabled:opacity-40; }
+  .t-btn-ghost { @apply inline-flex items-center justify-center gap-1.5 rounded-theme border border-t-border px-4 py-3 text-sm font-semibold text-t-fg transition hover:bg-t-muted; }
   .card { @apply rounded-ui border border-border bg-card text-card-foreground shadow-ui-sm; }
   .badge { @apply inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium; }
 }

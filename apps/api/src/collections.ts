@@ -60,7 +60,10 @@ export function collectionRoutes(app: FastifyInstance, ctx: Ctx) {
   // menu da equipe (qualquer status da loja): é o que PDV, garçom e painel usam
   app.get(`${S}/menu`, { preHandler: staffGuard(ctx) }, async (req) => {
     const s = req.staff!;
-    return withTenant(ctx.pools, s.tenantId, (q) => loadMenu(q, s.storeId));
+    return withTenant(ctx.pools, s.tenantId, async (q) => {
+      const [cfg] = await q`select data->'tables' as tables from store_settings where store_id = ${s.storeId}`;
+      return { ...(await loadMenu(q, s.storeId)), tables: Number(cfg?.tables ?? 20) };   // mapa de mesas do garçom
+    });
   });
 
   const nameOf = (req: { params: unknown }) => (req.params as { name: string }).name;

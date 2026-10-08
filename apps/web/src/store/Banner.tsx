@@ -16,7 +16,7 @@ export function BannerCarousel() {
   if (banners.length === 0) return null;
   const cur = Math.min(i, banners.length - 1);
   return (
-    <div className="relative w-full overflow-hidden md:rounded-t">
+    <div className="relative w-full overflow-hidden md:rounded-theme">
       <div className="flex transition-transform duration-500" style={{ transform: `translateX(-${cur * 100}%)` }}>
         {banners.map((b) => (
           <div key={b.id} className="relative aspect-[5/3] w-full shrink-0 sm:aspect-[5/2]">

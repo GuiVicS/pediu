@@ -63,7 +63,7 @@ export default function OrdersView({ o, selectedId, onSelect, onReceive }: { o: 
                 {list.map((x) => { const v = ORIGIN_VIEW[originOf(x)]; return (
                   <tr key={x.id} onClick={() => onSelect(x.id)} className={cx('cursor-pointer hover:bg-muted/40', sel?.id === x.id && 'bg-accent hover:bg-accent', x.status === 'cancelado' && 'opacity-60')} tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') onSelect(x.id); }} aria-selected={sel?.id === x.id}>
                     <td className="px-4 py-3 font-bold">{x.number}</td><td className="px-4 py-3">{time(x.created_at)}</td>
-                    <td className="px-4 py-3"><div className="font-semibold">{x.customer_name || '—'}</div><div className="flex items-center gap-1 text-xs text-muted-foreground"><v.Icon size={12} />{x.type === 'mesa' ? `Mesa ${x.table_number}` : x.channel === 'ifood' ? 'iFood' : v.label}</div></td>
+                    <td className="px-4 py-3"><div className="font-semibold">{x.customer_name || '—'}</div><div className="flex items-center gap-1 text-xs text-muted-foreground"><v.Icon size={12} />{x.type === 'mesa' ? `Mesa ${x.table_number}` : x.channel === 'ifood' ? 'iFood' : v.label}{x.bill_requested_at && <span className="ml-1 rounded-full bg-violet-600 px-1.5 py-px text-[10px] font-bold uppercase text-white">conta pedida</span>}</div></td>
                     <td className="px-4 py-3 font-bold">{brlc(x.total_cents)}</td><td className="px-4 py-3"><PaidChip paid={x.paid} /></td><td className="px-4 py-3"><Chip status={x.status} /></td>
                     <td className="px-2 py-3 text-muted-foreground"><ChevronRight size={18} /></td></tr>); })}
               </tbody>
@@ -77,7 +77,7 @@ export default function OrdersView({ o, selectedId, onSelect, onReceive }: { o: 
             <div className="space-y-4">
               <div className="flex items-start justify-between gap-2"><div><h2 className="text-2xl font-extrabold">Pedido #{sel.number}</h2><p className="text-sm text-muted-foreground">{new Date(sel.created_at).toLocaleString('pt-BR', { dateStyle: 'long', timeStyle: 'short' })}</p></div><Chip status={sel.status} /></div>
               <div className="space-y-1.5 rounded-2xl border border-border p-3 text-sm">
-                <div className="flex items-center gap-2 font-bold"><User size={16} className="text-primary" />{sel.customer_name || 'Cliente não informado'}<span className="ml-auto rounded-full bg-accent px-2.5 py-0.5 text-xs font-semibold text-primary">{sel.type === 'mesa' ? `Mesa ${sel.table_number}` : ORIGIN_VIEW[originOf(sel)].label}</span></div>
+                <div className="flex items-center gap-2 font-bold"><User size={16} className="text-primary" />{sel.customer_name || 'Cliente não informado'}<span className="ml-auto rounded-full bg-accent px-2.5 py-0.5 text-xs font-semibold text-primary">{sel.type === 'mesa' ? `Mesa ${sel.table_number}` : ORIGIN_VIEW[originOf(sel)].label}</span>{sel.bill_requested_at && <span className="rounded-full bg-violet-600 px-2.5 py-0.5 text-xs font-bold text-white">Conta pedida</span>}</div>
                 {sel.customer_phone && <div className="flex items-center gap-2 text-muted-foreground"><Phone size={14} />{sel.customer_phone}</div>}
                 {sel.address && <div className="flex items-start gap-2 text-muted-foreground"><MapPin size={14} className="mt-0.5 shrink-0" />{sel.address}</div>}
               </div>

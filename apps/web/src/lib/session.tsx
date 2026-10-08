@@ -40,7 +40,10 @@ export function RequirePerm({ perm, children }: { perm: Perm; children: ReactNod
   const loc = useLocation();
   useApplyPlatformTheme();
   if (!ready) return <div className="p-8 text-center text-sm text-muted-foreground">Carregando…</div>;
-  if (!me) return <Navigate to={`/entrar?next=${encodeURIComponent(loc.pathname)}`} replace />;
+  // cada app (painel, PDV, garçom, entregador) é um PWA com escopo próprio: o login fica dentro dele
+  const app = loc.pathname.split('/')[1] ?? '';
+  const login = ['painel', 'pdv', 'garcom', 'entregador'].includes(app) ? `/${app}/entrar` : '/entrar';
+  if (!me) return <Navigate to={`${login}?next=${encodeURIComponent(loc.pathname)}`} replace />;
   if (!can(perm)) return (
     <div className="flex min-h-[60vh] items-center justify-center p-6 font-brand">
       <div className="card max-w-md space-y-3 p-8 text-center">

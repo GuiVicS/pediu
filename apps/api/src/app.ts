@@ -18,6 +18,8 @@ import { pdvRoutes } from './pdv.js';
 import { printingRoutes } from './printing.js';
 import { realtimeRoutes } from './realtime.js';
 import { releaseRoutes } from './releases.js';
+import { appRoutes } from './apps.js';
+import { totemRoutes } from './totem.js';
 import { uploadRoutes } from './uploads.js';
 import { existsSync } from 'node:fs';
 import fastifyStatic from '@fastify/static';
@@ -84,6 +86,8 @@ export function buildApp(ctx: Ctx, opts: { trustProxy?: boolean; logger?: boolea
   uploadRoutes(app, ctx);
   printingRoutes(app, ctx);
   paymentRoutes(app, ctx);
+  appRoutes(app, ctx);
+  totemRoutes(app, ctx);
   pdvRoutes(app, ctx);
   ifoodRoutes(app, ctx);
   releaseRoutes(app, ctx);

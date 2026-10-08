@@ -6,20 +6,25 @@ import { URL } from 'node:url';
 export class GatewayError extends Error { constructor(msg: string, readonly status: number, readonly detail?: unknown) { super(msg); } }
 
 // =============== Mercado Pago ===============
-export interface MpCreds { accessToken: string; webhookSecret?: string }
+/** publicKey: chave pública da conta (vai para o navegador, no formulário de cartão do checkout transparente). */
+export interface MpCreds { accessToken: string; publicKey?: string; webhookSecret?: string }
 export type MpStatus = 'approved' | 'pending' | 'in_process' | 'authorized' | 'rejected' | 'cancelled' | 'refunded' | 'charged_back' | 'expired';
-export interface MpPayment { id: string; status: MpStatus; amountCents: number; externalReference: string | null; qrCode?: string; expiresAt?: string }
+export interface MpPayment { id: string; status: MpStatus; statusDetail?: string; amountCents: number; externalReference: string | null; qrCode?: string; expiresAt?: string }
+
+/** Dados que o formulário de cartão (Card Payment Brick) devolve: o número do cartão nunca chega aqui, só o token. */
+export interface MpCardInput { token: string; paymentMethodId: string; issuerId?: string; installments: number; payer: { email: string; identification?: { type: string; number: string } } }
 
 export interface MercadoPagoApi {
   whoami(): Promise<{ id: string; nickname: string }>;
   createPix(p: { amountCents: number; description: string; reference: string; payer: { email: string; name: string; document?: string }; notificationUrl?: string; expiresAt: Date; idempotencyKey: string }): Promise<MpPayment>;
-  createPreference(p: { title: string; amountCents: number; reference: string; notificationUrl?: string; backUrl: string; expiresAt: Date }): Promise<{ id: string; url: string }>;
+  /** Checkout transparente: cobra o cartão tokenizado no navegador (a loja nunca vê o número do cartão). */
+  createCardPayment(p: { amountCents: number; description: string; reference: string; card: MpCardInput; notificationUrl?: string; idempotencyKey: string }): Promise<MpPayment>;
   getPayment(id: string): Promise<MpPayment>;
   refund(id: string): Promise<void>;
 }
 
 const mpMap = (p: any): MpPayment => ({
-  id: String(p.id), status: p.status, amountCents: Math.round(Number(p.transaction_amount) * 100), externalReference: p.external_reference ?? null,
+  id: String(p.id), status: p.status, statusDetail: p.status_detail ?? undefined, amountCents: Math.round(Number(p.transaction_amount) * 100), externalReference: p.external_reference ?? null,
   qrCode: p.point_of_interaction?.transaction_data?.qr_code, expiresAt: p.date_of_expiration ?? undefined,
 });
 
@@ -41,13 +46,13 @@ export function mercadoPago(c: MpCreds, f: typeof fetch = fetch): MercadoPagoApi
       }, { 'x-idempotency-key': p.idempotencyKey });
       return mpMap(r);
     },
-    async createPreference(p) {
-      const r = await call('POST', '/checkout/preferences', {
-        items: [{ title: p.title.slice(0, 120), quantity: 1, unit_price: p.amountCents / 100, currency_id: 'BRL' }], external_reference: p.reference, notification_url: p.notificationUrl,
-        back_urls: { success: p.backUrl, pending: p.backUrl, failure: p.backUrl }, auto_return: 'approved', expires: true, expiration_date_to: p.expiresAt.toISOString(),
-        payment_methods: { excluded_payment_types: [{ id: 'ticket' }, { id: 'bank_transfer' }], installments: 12 },
-      });
-      return { id: r.id, url: r.init_point };
+    async createCardPayment(p) {
+      const r = await call('POST', '/v1/payments', {
+        transaction_amount: p.amountCents / 100, description: p.description.slice(0, 200), external_reference: p.reference, notification_url: p.notificationUrl,
+        token: p.card.token, payment_method_id: p.card.paymentMethodId, installments: p.card.installments, ...(p.card.issuerId ? { issuer_id: Number(p.card.issuerId) || p.card.issuerId } : {}),
+        payer: { email: p.card.payer.email, ...(p.card.payer.identification ? { identification: p.card.payer.identification } : {}) },
+      }, { 'x-idempotency-key': p.idempotencyKey });
+      return mpMap(r);
     },
     async getPayment(id) { return mpMap(await call('GET', `/v1/payments/${encodeURIComponent(id)}`)); },
     async refund(id) { await call('POST', `/v1/payments/${encodeURIComponent(id)}/refunds`, {}, { 'x-idempotency-key': `refund-${id}` }); },
