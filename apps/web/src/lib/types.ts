@@ -50,6 +50,10 @@ export interface ApiOrder {
   cancelled_at: string | null; cancel_reason: string | null; items: ApiOrderItem[];
   /** mesa: pessoas e quando o garçom pediu a conta */
   guests?: number | null; bill_requested_at?: string | null;
+  /** mesa: quem abriu a comanda e todos que mexeram nela (garçons e caixa) */
+  opened_by_name?: string | null; staff_names?: string[];
+  /** entrega: rota do entregador (mesma saída) e a posição da parada */
+  route_id?: string | null; route_stop?: number | null;
 }
 
 export interface CartLine {

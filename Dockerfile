@@ -18,7 +18,9 @@ RUN npm run build -w @pediu/web && npm run build -w @pediu/platform
 # ---- API (traz o super admin embutido) ----
 FROM deps AS api
 COPY --from=ui /app/apps/platform/dist /app/platform-ui
-ENV NODE_ENV=production PORT=3000 PLATFORM_UI_DIR=/app/platform-ui UPLOADS_DIR=/data/uploads
+# agente de impressão compilado: a loja oferece o download em Impressão › Baixar o agente
+RUN npm run agent:build && mkdir -p /app/agent-dist && cp apps/print-agent/dist/agent.mjs /app/agent-dist/
+ENV NODE_ENV=production PORT=3000 PLATFORM_UI_DIR=/app/platform-ui UPLOADS_DIR=/data/uploads AGENT_DIST_DIR=/app/agent-dist
 RUN mkdir -p /data/uploads && chown -R node:node /data /app
 USER node
 EXPOSE 3000

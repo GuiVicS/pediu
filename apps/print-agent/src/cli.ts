@@ -1,13 +1,21 @@
 import { readFileSync } from 'node:fs';
 import { pair, runAgent } from './agent.js';
 import { configPath, loadConfig, saveConfig } from './config.js';
-import { defaultDrivers, discoverPrinters, printTo, type Connection } from './drivers.js';
+import { autostart } from './autostart.js';
+import { defaultDrivers, discoverPrinters, printTo, testTicket, type Connection } from './drivers.js';
+import { startUi } from './ui.js';
 
-const VERSION = (() => { try { return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string; } catch { return '0.1.0'; } })();
+declare const __AGENT_VERSION__: string | undefined;   // injetado pelo build (build.mjs)
+const VERSION = typeof __AGENT_VERSION__ !== 'undefined' ? __AGENT_VERSION__ : (() => { try { return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string; } catch { return '0.1.0'; } })();
 const arg = (name: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : undefined; };
 const cmd = process.argv[2];
 
 const HELP = `Pediu Agente de Impressão ${VERSION}
+
+  pediu-agent            (ou:  pediu-agent ui)
+      Abre a tela do agente no navegador: parear, ver as impressoras, imprimir teste. É o jeito mais fácil.
+  pediu-agent autostart install|remove|status
+      Liga/desliga o início automático junto com o computador.
 
   pediu-agent pair --url https://sualoja.com.br --code 123456 [--name "Caixa"]
       Pareia este computador com a loja. O código de 6 dígitos é gerado no painel (Impressão → Parear agente).
@@ -38,9 +46,13 @@ async function main() {
   } else if (cmd === 'test') {
     const connection = arg('connection') as Connection | undefined, address = arg('address');
     if (!connection || !address) { console.error('Informe --connection e --address.\n' + HELP); process.exit(1); }
-    const esc = Buffer.from([0x1b, 0x40, 0x1b, 0x74, 0x03, ...Buffer.from('TESTE DE IMPRESSAO\nAcentos: acao, coracao, pao\n\n\n\n'), 0x1d, 0x56, 0x42, 0x03]);
-    await printTo({ name: address, connection, address }, esc, defaultDrivers);
+    await printTo({ name: address, connection, address }, testTicket(), defaultDrivers);
     console.log('Enviado. Se nada saiu, confira o endereço, o compartilhamento (Windows) ou a fila (CUPS).');
+  } else if (cmd === 'autostart') {
+    const r = await autostart(process.argv[3] as 'install' | 'remove' | 'status' | undefined);
+    console.log(r);
+  } else if (!cmd || cmd === 'ui') {
+    await startUi({ version: VERSION, open: !process.argv.includes('--no-open'), port: Number(arg('port')) || undefined });
   } else console.log(HELP);
 }
 main().catch((e) => { console.error(String(e?.message ?? e)); process.exit(1); });

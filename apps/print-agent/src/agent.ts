@@ -22,7 +22,8 @@ export async function handleJob(job: JobMessage, printed: PrintedLog, drivers: D
   }
 }
 
-export interface RunOptions { cfg: AgentConfig; version: string; drivers?: Drivers; log?: Log; printed?: PrintedLog; signal?: AbortSignal; wsFactory?: (url: string, headers: Record<string, string>) => WebSocket }
+export type ConnStatus = 'conectando' | 'conectado' | 'reconectando' | 'recusado' | 'removido';
+export interface RunOptions { cfg: AgentConfig; version: string; drivers?: Drivers; log?: Log; printed?: PrintedLog; signal?: AbortSignal; onStatus?: (s: ConnStatus) => void; onJob?: (j: { kind: string; printer: string; ok: boolean; error?: string; at: number }) => void; wsFactory?: (url: string, headers: Record<string, string>) => WebSocket }
 
 /** Mantém a conexão com o servidor, reconectando com espera crescente (1 s → 30 s). Só termina quando `signal` é abortado. */
 export async function runAgent(o: RunOptions): Promise<void> {
@@ -31,6 +32,7 @@ export async function runAgent(o: RunOptions): Promise<void> {
   const printed = o.printed ?? (await new PrintedLog().load());
   const url = o.cfg.apiUrl.replace(/^http/, 'ws').replace(/\/$/, '') + '/v1/agent/ws';
   let attempt = 0;
+  o.onStatus?.('conectando');
   while (!o.signal?.aborted) {
     const reason = await new Promise<string>((resolve) => {
       const ws = (o.wsFactory ?? ((u, headers) => new WebSocket(u, { headers })))(url, { authorization: `Bearer ${o.cfg.token}` });
@@ -39,19 +41,21 @@ export async function runAgent(o: RunOptions): Promise<void> {
       const queue: Promise<void> = Promise.resolve();
       let chain = queue;
       ws.on('open', async () => {
-        attempt = 0; log('info', `Conectado a ${url}`);
+        attempt = 0; log('info', `Conectado a ${url}`); o.onStatus?.('conectado');
         ws.send(JSON.stringify({ type: 'hello', version: o.version, platform: process.platform, printers: await discoverPrinters() }));
       });
       ws.on('message', (raw) => {
         let m: { type?: string }; try { m = JSON.parse(raw.toString()); } catch { return; }
-        if (m.type === 'job') chain = chain.then(async () => { const ack = await handleJob(m as JobMessage, printed, drivers, log); if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(ack)); });   // um job por vez: a ordem do papel importa
+        if (m.type === 'job') chain = chain.then(async () => { const job = m as JobMessage; const ack = await handleJob(job, printed, drivers, log); o.onJob?.({ kind: job.kind, printer: job.printer.name, ok: ack.ok, error: ack.error, at: Date.now() }); if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(ack)); });   // um job por vez: a ordem do papel importa
+        else if (m.type === 'discover') void discoverPrinters().then((printers) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'printers', printers })); });   // botão "Puxar impressoras" do painel
         else if (m.type === 'welcome') log('info', 'Autenticado. Aguardando pedidos.');
       });
       ws.on('close', (code) => resolve(code === 4401 ? 'unauthorized' : code === 4001 ? 'revoked' : 'closed'));
       ws.on('error', (e) => log('warn', `Conexão: ${e.message}`));
     });
-    if (reason === 'unauthorized' || reason === 'revoked') { log('error', reason === 'revoked' ? 'Este agente foi removido no painel. Pareie de novo.' : 'Token recusado. Pareie de novo (pediu-agent pair).'); return; }
+    if (reason === 'unauthorized' || reason === 'revoked') { o.onStatus?.(reason === 'revoked' ? 'removido' : 'recusado'); log('error', reason === 'revoked' ? 'Este agente foi removido no painel. Pareie de novo.' : 'Token recusado. Pareie de novo (pediu-agent pair).'); return; }
     if (o.signal?.aborted) return;
+    o.onStatus?.('reconectando');
     const wait = Math.min(30_000, 1000 * 2 ** Math.min(attempt++, 5));
     log('warn', `Desconectado. Tentando de novo em ${Math.round(wait / 1000)} s…`);
     await new Promise((r) => setTimeout(r, wait));

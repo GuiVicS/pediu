@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Check, CheckCheck, Play, RefreshCw, Save } from 'lucide-react';
+import { Check, CheckCheck, HelpCircle, ListChecks, Play, RefreshCw, Save } from 'lucide-react';
 import { del, get, post, put, qs, brl, dt, ago } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Field, Modal, Toggle } from '@/ui/kit';
@@ -58,6 +58,7 @@ export function Alerts() {
   const l = useLoad(() => (tab === 'rules' ? get('/v1/platform/alert-rules') : get(`/v1/platform/alerts${qs({ status: tab, limit: 100 })}`)), [tab], 20_000);
   const act = useAction(); const toast = useToast();
   const [edit, setEdit] = useState<any | null>(null);
+  const [understand, setUnderstand] = useState<string | null>(null);
   const run = (fn: () => Promise<unknown>, msg: string) => act.run(async () => { await fn(); toast(msg); await l.reload(); });
   return (
     <>
@@ -70,13 +71,49 @@ export function Alerts() {
             <Toggle checked={r.enabled} onChange={(v) => run(() => put(`/v1/platform/alert-rules/${r.key}`, { enabled: v }), v ? 'Regra ativada' : 'Regra desativada')} /><button className="btn-ghost !px-2.5 !py-1 text-xs" onClick={() => setEdit({ ...r, paramsText: JSON.stringify(r.params) })}>Editar</button></div>))}</div>
       ) : l.data.alerts.length === 0 ? <Empty>{tab === 'active' ? 'Nenhum alerta aberto 🎉' : 'Nada resolvido ainda.'}</Empty> : (
         <div className="space-y-2">{l.data.alerts.map((a: any) => (
-          <div key={a.id} className="card flex flex-wrap items-center gap-3 p-3 text-sm"><Badge cls={SEVERITY[a.severity]}>{a.severity}</Badge><div className="min-w-0 flex-1"><div className="font-medium">{a.title}</div><div className="text-xs text-muted-foreground">{a.store_name ? <Link className="text-primary" to={`/lojas/${a.store_id}`}>{a.store_name}</Link> : 'plataforma'} · desde {dt(a.first_seen)} · {a.occurrences}× · {a.status}{a.resolved_by ? ` (${a.resolved_by})` : ''}</div></div>
+          <div key={a.id} className="card flex flex-wrap items-center gap-3 p-3 text-sm"><Badge cls={SEVERITY[a.severity]}>{a.severity}</Badge><div className="min-w-0 flex-1"><div className="font-medium">{a.title}</div>{a.plain && <div className="mt-0.5 text-sm text-muted-foreground">{a.plain}</div>}<div className="mt-1 text-xs text-muted-foreground">{a.store_name ? <Link className="text-primary" to={`/lojas/${a.store_id}`}>{a.store_name}</Link> : 'plataforma'} · desde {dt(a.first_seen)} · {a.occurrences}× · {a.status}{a.resolved_by ? ` (${a.resolved_by})` : ''}</div></div>
+            <button className="btn-ghost !px-2.5 !py-1 text-xs" onClick={() => setUnderstand(a.id)}><HelpCircle size={13} /> Entender</button>
             {a.status !== 'resolved' && <div className="flex gap-1.5">{a.status === 'open' && <button className="btn-ghost !px-2.5 !py-1 text-xs" onClick={() => run(() => post(`/v1/platform/alerts/${a.id}/ack`), 'Reconhecido')}><Check size={13} /> Reconhecer</button>}<button className="btn-ghost !px-2.5 !py-1 text-xs" onClick={() => run(() => post(`/v1/platform/alerts/${a.id}/resolve`), 'Resolvido')}><CheckCheck size={13} /> Resolver</button></div>}</div>))}</div>)}
       <Modal open={!!edit} onClose={() => setEdit(null)} title={`Regra: ${edit?.title ?? ''}`} footer={<><button className="btn-ghost" onClick={() => setEdit(null)}>Cancelar</button><button className="btn" disabled={act.busy} onClick={() => run(async () => { await put(`/v1/platform/alert-rules/${edit.key}`, { params: JSON.parse(edit.paramsText), severity: edit.severity, cooldownMin: Number(edit.cooldown_min) }); setEdit(null); }, 'Regra salva')}><Save size={14} /> Salvar</button></>}>
         {edit && <div className="space-y-3 text-sm"><ErrorBox>{act.error}</ErrorBox><Field label="Parâmetros (JSON)" hint="Só os parâmetros que a regra já tem."><textarea className="input font-mono text-xs" rows={3} value={edit.paramsText} onChange={(e) => setEdit({ ...edit, paramsText: e.target.value })} /></Field>
           <div className="grid grid-cols-2 gap-3"><Field label="Severidade"><select className="input" value={edit.severity} onChange={(e) => setEdit({ ...edit, severity: e.target.value })}><option value="info">info</option><option value="warn">warn</option><option value="critical">critical</option></select></Field><Field label="Reavisar a cada (min)"><input className="input" type="number" min={1} value={edit.cooldown_min} onChange={(e) => setEdit({ ...edit, cooldown_min: e.target.value })} /></Field></div></div>}
       </Modal>
+      <UnderstandAlert id={understand} onClose={() => setUnderstand(null)} />
     </>
+  );
+}
+
+
+const LOG_LEVEL: Record<string, string> = { error: 'bg-red-100 text-red-700', warn: 'bg-amber-100 text-amber-700', info: 'bg-blue-100 text-blue-700', debug: 'bg-slate-100 text-slate-600' };
+const LOG_LABEL: Record<string, string> = { error: 'erro', warn: 'aviso', info: 'info', debug: 'debug' };
+
+/** "Entender este alerta": o que aconteceu, por que importa, o que fazer, dados concretos e os logs do período. */
+function UnderstandAlert({ id, onClose }: { id: string | null; onClose: () => void }) {
+  const l = useLoad(() => (id ? get(`/v1/platform/alerts/${id}/context`) : Promise.resolve(null)), [id]);
+  const c = id ? l.data : null;
+  return (
+    <Modal open={!!id} onClose={onClose} wide title={c ? `Entender: ${c.alert.title}` : 'Entender este alerta'}>
+      {!id ? null : l.error ? <ErrorBox>{l.error}</ErrorBox> : !c ? <Spinner /> : (
+        <div className="space-y-5 text-sm">
+          <section>
+            <div className="mb-1 flex flex-wrap items-center gap-2"><Badge cls={SEVERITY[c.alert.severity]}>{c.alert.severity}</Badge>
+              <span className="text-xs text-muted-foreground">{c.alert.store_name ? <Link className="text-primary" to={`/lojas/${c.alert.store_id}`}>{c.alert.store_name}</Link> : 'plataforma'} · desde {dt(c.alert.first_seen)} · visto {c.alert.occurrences}× · {c.alert.status}</span></div>
+            <h3 className="mb-1 flex items-center gap-1.5 font-semibold"><HelpCircle size={15} /> O que aconteceu</h3><p>{c.explanation.what}</p>
+          </section>
+          <section><h3 className="mb-1 font-semibold">Por que isso importa</h3><p className="text-muted-foreground">{c.explanation.why}</p></section>
+          <section><h3 className="mb-1 flex items-center gap-1.5 font-semibold"><ListChecks size={15} /> O que fazer</h3>
+            <ol className="list-decimal space-y-1 pl-5">{c.explanation.steps.map((st: string, i: number) => <li key={i}>{st}</li>)}</ol></section>
+          {c.facts.length > 0 && <section><h3 className="mb-1 font-semibold">Detalhes</h3>
+            <div className="divide-y divide-border rounded-ui-sm border border-border">{c.facts.map((f: { label: string; value: string }, i: number) => <div key={i} className="flex flex-wrap justify-between gap-2 px-3 py-2"><span>{f.label}</span><span className="text-muted-foreground">{f.value}</span></div>)}</div></section>}
+          <section><h3 className="mb-1 font-semibold">Logs relacionados <span className="font-normal text-muted-foreground">({c.logs.length})</span></h3>
+            {c.logs.length === 0 ? <p className="rounded-ui-sm bg-muted/60 p-3 text-muted-foreground">Nenhum erro ou aviso registrado nesse período{c.alert.store_name ? ` para ${c.alert.store_name}` : ''}. Isso também ajuda: indica que não foi uma falha do sistema, e sim da operação (ou algo que não gera log).</p> : (
+              <div className="divide-y divide-border rounded-ui-sm border border-border">{c.logs.map((g: any, i: number) => (
+                <details key={i} className="px-3 py-2"><summary className="flex cursor-pointer flex-wrap items-center gap-2"><Badge cls={LOG_LEVEL[g.level]}>{LOG_LABEL[g.level] ?? g.level}</Badge><Badge>{g.service}</Badge><span className="text-xs text-muted-foreground">{dt(g.at)}</span><span className="min-w-0 flex-1 truncate">{g.message}</span></summary>
+                  <div className="mt-2 space-y-1 text-xs text-muted-foreground"><div>Evento: <code>{g.event}</code>{g.status ? ` · status ${g.status}` : ''}{g.store_name ? ` · ${g.store_name}` : ''}</div>{g.data && <pre className="max-h-40 overflow-auto rounded bg-muted p-2">{JSON.stringify(g.data, null, 2)}</pre>}</div></details>))}</div>)}
+            <p className="mt-2 text-xs text-muted-foreground">Mostra erros e avisos do período em que o alerta esteve aberto. Para investigar mais, use a página <Link className="text-primary" to="/logs">Logs</Link>.</p></section>
+        </div>
+      )}
+    </Modal>
   );
 }
 

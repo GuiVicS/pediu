@@ -6,3 +6,4 @@ export * from './opening-hours.js';
 export * from './order-flow.js';
 export * from './schemas.js';
 export * from './apps.js';
+export * from './route-plan.js';

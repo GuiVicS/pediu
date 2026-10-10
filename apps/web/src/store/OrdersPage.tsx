@@ -5,7 +5,7 @@ import { useCustomer } from '@/lib/customer';
 import { DLink } from '@/lib/nav';
 import { brl } from '@/lib/format';
 import { cx } from '@/ui/kit';
-import { loadMyOrders } from './CheckoutModal';
+import { loadMyOrders } from './PaymentModals';
 import { useStore } from './StoreContext';
 
 interface Tracked { number: number; status: string; type: string; total_cents: number; created_at: string; store_name: string; items: { name: string; qty: number }[] }

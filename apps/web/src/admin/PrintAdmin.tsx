@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Clock, Copy, Monitor, Pencil, Plug, Plus, Printer, RefreshCw, Save, Trash2, Unplug, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, Copy, Download, Loader2, Monitor, Pencil, Plug, Plus, Printer, RefreshCw, Save, Trash2, Unplug, X } from 'lucide-react';
 import { del, get, post, put } from '@/lib/api';
 import type { PrintZone } from '@/lib/types';
 import { useCollection } from '@/lib/data';
@@ -8,8 +8,12 @@ import { timeAgo } from '@/lib/orders';
 import { Field, Modal, Toggle, cx } from '@/ui/kit';
 import { ErrorBox, Spinner, useAction } from '@/ui/misc';
 import { PageHeader, useToast } from './AdminUI';
+import { PrintGuide } from './PrintGuide';
 
-interface Agent { id: string; name: string; platform: string | null; version: string | null; last_seen_at: string | null; online: boolean; discovered: { name: string; kind?: string; detail?: string }[] }
+interface Discovered { name: string; kind?: string; detail?: string }
+interface Agent { id: string; name: string; platform: string | null; version: string | null; last_seen_at: string | null; online: boolean; discovered: Discovered[] }
+/** Windows imprime pelo nome do compartilhamento; se a impressora não está compartilhada, usamos o nome (o painel avisa). */
+const shareOf = (d: Discovered) => /compartilhada como "([^"]+)"/.exec(d.detail ?? '')?.[1] ?? d.name;
 interface PrinterRow { id: string; agent_id: string | null; name: string; connection: 'rede' | 'windows' | 'cups'; address: string; paper: '58mm' | '80mm'; columns: number; codepage: 'cp860' | 'cp850' | 'cp437'; cut: boolean; drawer: boolean; active: boolean }
 interface ZP { zone_id: string; printer_id: string; priority: number; copies: number }
 interface Job { id: string; order_id: string | null; zone_id: string | null; printer_id: string | null; kind: string; status: 'pendente' | 'enviado' | 'impresso' | 'falhou'; attempts: number; last_error: string | null; created_at: string; printed_at: string | null; preview: string }
@@ -32,7 +36,20 @@ export default function PrintAdmin() {
   const act = useAction();
 
   const load = useCallback(async () => setOv(await get<Overview>('/v1/staff/print/overview')), []);
+  const pairNow = () => act.run(async () => setPairing(await post('/v1/staff/print/pairing')));
+  // "Puxar impressoras": pede ao agente a lista atual do computador dele
+  const [found, setFound] = useState<{ agentId: string; list: Discovered[] } | null>(null);
+  const [pulling, setPulling] = useState<string | null>(null);
+  const pull = async (a: Agent) => {
+    setPulling(a.id);
+    try { const r = await act.run(() => post<{ printers: Discovered[] }>(`/v1/staff/print/agents/${a.id}/discover`)); if (r) { setFound({ agentId: a.id, list: r.printers }); await load(); } }
+    finally { setPulling(null); }
+  };
+  const asPrinter = (a: Agent, d: Discovered) => ({ ...blankPrinter(), name: d.name, agent_id: a.id, connection: (d.kind === 'windows' ? 'windows' : 'cups') as PrinterRow['connection'], address: shareOf(d) });
+
   useEffect(() => { void load(); }, [load]);
+  const agentCount = ov?.agents.length;
+  useEffect(() => { setPairing(null); }, [agentCount]);                           // agente novo pareado: fecha o código
   useStream((e) => { if (e.type === 'print' || e.type === 'agent') void load(); }, load, 10_000);
   if (!ov || !zones.ready) return <Spinner />;
 
@@ -47,18 +64,20 @@ export default function PrintAdmin() {
       <PageHeader title="Impressão por zonas" subtitle="Cada zona (cozinha, bar, expedição…) imprime só os seus itens na impressora certa" actions={<button className="btn-ghost" onClick={load}><RefreshCw size={14} /> Atualizar</button>} />
       <ErrorBox>{act.error}</ErrorBox>
 
-      {(failed.length > 0 || !online || noPrinter.length > 0) && (
+      {(failed.length > 0 || (ov.agents.length > 0 && !online) || (ov.agents.length > 0 && noPrinter.length > 0)) && (
         <div className="mb-4 space-y-2">
-          {!online && <div className="flex items-start gap-2 rounded-ui-sm bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"><Unplug size={16} className="mt-0.5 shrink-0" /> Nenhum agente de impressão conectado. Os cupons ficam na fila e saem quando o agente voltar; depois de alguns minutos sem agente, vão para a impressora reserva ou falham.</div>}
+          {ov.agents.length > 0 && !online && <div className="flex items-start gap-2 rounded-ui-sm bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"><Unplug size={16} className="mt-0.5 shrink-0" /> O agente está desconectado. Abra o Pediu Agente no computador das impressoras: ele já está pareado e volta sozinho. Enquanto isso os cupons ficam na fila; depois de alguns minutos vão para a impressora reserva ou falham.</div>}
           {failed.length > 0 && <div className="flex items-start gap-2 rounded-ui-sm bg-destructive/10 px-3 py-2 text-sm text-destructive"><AlertTriangle size={16} className="mt-0.5 shrink-0" /> {failed.length} cupom(ns) <b>não saíram</b>. Confira a impressora e use "Reenviar" na fila abaixo.</div>}
-          {noPrinter.length > 0 && <div className="flex items-start gap-2 rounded-ui-sm bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"><AlertTriangle size={16} className="mt-0.5 shrink-0" /> Zona(s) sem impressora: <b>{noPrinter.map((z) => z.name).join(', ')}</b> — os pedidos dela não imprimem.</div>}
+          {ov.agents.length > 0 && noPrinter.length > 0 && <div className="flex items-start gap-2 rounded-ui-sm bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"><AlertTriangle size={16} className="mt-0.5 shrink-0" /> Zona(s) sem impressora: <b>{noPrinter.map((z) => z.name).join(', ')}</b> — os pedidos dela não imprimem.</div>}
         </div>
       )}
+
+      <PrintGuide onPair={pairNow} d={{ agents: ov.agents.length, agentsOnline: ov.agents.filter((a) => a.online).length, printers: ov.printers.length, zonesTotal: zones.items.filter((z) => z.active).length, zonesWithoutPrinter: noPrinter.length }} />
 
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="card space-y-3 p-4">
           <div className="flex items-center justify-between"><h2 className="flex items-center gap-2 font-semibold"><Monitor size={16} /> Agentes de impressão</h2>
-            <button className="btn" onClick={() => act.run(async () => setPairing(await post('/v1/staff/print/pairing')))}><Plug size={14} /> Parear agente</button></div>
+            <button className="btn" onClick={pairNow}><Plug size={14} /> Parear agente</button></div>
           {ov.agents.length === 0 && <p className="text-sm text-muted-foreground">Nenhum agente pareado. Instale o <b>Pediu Agente</b> no computador onde ficam as impressoras e pareie com o código.</p>}
           {ov.agents.map((a) => (
             <div key={a.id} className="rounded-ui-sm border border-border p-3 text-sm">
@@ -66,14 +85,32 @@ export default function PrintAdmin() {
                 <span className="text-xs text-muted-foreground">{a.online ? 'conectado' : a.last_seen_at ? `visto há ${timeAgo(a.last_seen_at)}` : 'nunca conectou'}</span>
                 <button className="btn-danger !p-1.5" aria-label="Remover agente" onClick={() => confirm(`Remover o agente ${a.name}? Ele será desconectado.`) && act.run(async () => { await del(`/v1/staff/print/agents/${a.id}`); await load(); })}><Trash2 size={13} /></button></div>
               <div className="text-xs text-muted-foreground">{a.platform} · v{a.version}</div>
-              {a.discovered.length > 0 && <div className="mt-1.5 text-xs text-muted-foreground">Impressoras vistas por ele: {a.discovered.map((d) => d.name).join(', ')}</div>}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button className="btn-ghost !px-3 !py-1.5 text-xs" disabled={!a.online || pulling === a.id} title={a.online ? '' : 'O agente precisa estar conectado'} onClick={() => void pull(a)}>{pulling === a.id ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Puxar impressoras</button>
+                {!a.online && <span className="text-xs text-muted-foreground">Abra o agente no computador para puxar.</span>}
+              </div>
+              {(found?.agentId === a.id ? found.list : a.discovered).length > 0 && (
+                <div className="mt-2 space-y-1.5">
+                  <div className="text-xs font-medium text-muted-foreground">Impressoras que este computador enxerga ({(found?.agentId === a.id ? found.list : a.discovered).length}):</div>
+                  {(found?.agentId === a.id ? found.list : a.discovered).map((d) => {
+                    const has = ov.printers.some((p) => p.agent_id === a.id && p.address === shareOf(d));
+                    return (
+                      <div key={d.name} className="flex items-center gap-2 rounded-ui-xs bg-muted/50 px-2.5 py-1.5 text-xs">
+                        <div className="min-w-0 flex-1"><b className="block truncate">{d.name}</b>{d.detail && <span className="block truncate text-muted-foreground">{d.detail}</span>}</div>
+                        {has ? <span className="badge bg-green-100 text-green-700"><CheckCircle2 size={10} className="mr-1" />cadastrada</span> : <button className="btn !px-2.5 !py-1 text-xs" onClick={() => setPrinter(asPrinter(a, d))}><Plus size={12} /> Cadastrar</button>}
+                      </div>
+                    );
+                  })}
+                  {(found?.agentId === a.id ? found.list : a.discovered).some((d) => d.kind === 'windows' && !/compartilhada como/.test(d.detail ?? '')) && <p className="text-[11px] text-amber-700">No Windows a impressora precisa estar <b>compartilhada</b> para o agente imprimir nela (Propriedades da impressora › Compartilhamento).</p>}
+                </div>
+              )}
             </div>
           ))}
         </section>
 
         <section className="card space-y-3 p-4">
           <div className="flex items-center justify-between"><h2 className="flex items-center gap-2 font-semibold"><Printer size={16} /> Impressoras</h2><button className="btn" onClick={() => setPrinter(blankPrinter())}><Plus size={14} /> Nova impressora</button></div>
-          {ov.printers.length === 0 && <p className="text-sm text-muted-foreground">Cadastre cada impressora (térmica de cozinha, bar, caixa…).</p>}
+          {ov.printers.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma impressora cadastrada ainda. Use <b>Puxar impressoras</b> no agente (mais fácil) ou <b>Nova impressora</b> para informar o IP de uma impressora de rede.</p>}
           {ov.printers.map((p) => (
             <div key={p.id} className={cx('rounded-ui-sm border border-border p-3 text-sm', !p.active && 'opacity-60')}>
               <div className="flex items-center gap-2"><b className="flex-1">{p.name}</b>
@@ -90,7 +127,10 @@ export default function PrintAdmin() {
       <section className="card mt-5 space-y-3 p-4">
         <div className="flex items-center justify-between"><h2 className="font-semibold">Zonas de impressão</h2>
           <button className="btn" onClick={() => setZone({ name: '', description: '', paper: '80mm', copies: 1, autoPrint: true, showPrices: false, active: true, isDefault: false, events: ['novo', 'items_added', 'cancelado'] })}><Plus size={14} /> Nova zona</button></div>
-        <p className="text-xs text-muted-foreground">Cada categoria do cardápio aponta para uma zona (em Categorias). Itens de categoria sem zona saem na zona <b>padrão</b>. Zonas que mostram preços (caixa, expedição) imprimem o pedido inteiro; as de produção imprimem só os próprios itens, sem preço.</p>
+        <div className="space-y-1.5 rounded-ui-sm bg-muted/50 p-3 text-sm">
+          <p><b>Como funciona:</b> cada categoria do cardápio (Pizzas, Bebidas…) é ligada a uma <b>zona</b> em <i>Categorias</i>. Quando entra um pedido, cada zona imprime <b>só os itens dela</b>, na <b>impressora</b> que você escolher.</p>
+          <p className="text-muted-foreground">Exemplo: Pizzas → zona <i>Cozinha</i> → impressora da cozinha. Bebidas → zona <i>Bar</i> → impressora do bar. Zonas que mostram preços (caixa, expedição) imprimem o pedido inteiro. Itens de categoria sem zona saem na zona <b>padrão</b>.</p>
+        </div>
         <div className="grid gap-3 md:grid-cols-2">
           {zones.items.map((z) => {
             const links = ov.zonePrinters.filter((x) => x.zone_id === z.id).sort((a, b) => a.priority - b.priority);
@@ -133,10 +173,13 @@ export default function PrintAdmin() {
 
       <Modal open={!!pairing} onClose={() => setPairing(null)} title="Parear agente de impressão">
         {pairing && <div className="space-y-3 text-sm">
-          <p>No computador das impressoras, abra o terminal e rode:</p>
-          <pre className="overflow-x-auto rounded-ui-xs bg-slate-900 p-3 text-xs text-slate-100">pediu-agent pair --url {location.origin} --code {pairing.code}</pre>
-          <div className="flex items-center justify-center gap-3 rounded-ui bg-muted p-4"><span className="text-3xl font-extrabold tracking-[0.3em]">{pairing.code}</span><button className="btn-ghost" onClick={() => navigator.clipboard.writeText(pairing.code)}><Copy size={14} /> Copiar</button></div>
-          <p className="text-xs text-muted-foreground">O código vale por 10 minutos e só pode ser usado uma vez. Depois do pareamento, rode <code>pediu-agent run</code> e deixe aberto.</p>
+          <p>No computador das impressoras, abra a tela do <b>Pediu Agente</b> e preencha:</p>
+          <dl className="space-y-1 rounded-ui bg-muted p-3">
+            <div className="flex items-center justify-between gap-2"><dt className="text-muted-foreground">Endereço da loja</dt><dd className="flex items-center gap-1.5"><b>{location.origin}</b><button className="btn-ghost !p-1.5" aria-label="Copiar endereço" onClick={() => navigator.clipboard.writeText(location.origin)}><Copy size={13} /></button></dd></div>
+            <div className="flex items-center justify-between gap-2"><dt className="text-muted-foreground">Código</dt><dd className="flex items-center gap-2"><span className="text-3xl font-extrabold tracking-[0.3em]">{pairing.code}</span><button className="btn-ghost !p-1.5" aria-label="Copiar código" onClick={() => navigator.clipboard.writeText(pairing.code)}><Copy size={13} /></button></dd></div>
+          </dl>
+          <p className="text-xs text-muted-foreground">O código vale por 10 minutos e só pode ser usado uma vez. Você só pareia uma vez: depois o agente fica conectado sozinho, mesmo se o computador reiniciar (ligue “Iniciar junto com o computador” na tela do agente). Esta janela fecha sozinha quando o agente conectar.</p>
+          <details className="text-xs"><summary className="cursor-pointer text-muted-foreground">Prefere pelo terminal?</summary><pre className="mt-2 overflow-x-auto rounded-ui-xs bg-slate-900 p-3 text-slate-100">node pediu-agent.mjs pair --url {location.origin} --code {pairing.code}</pre></details>
         </div>}
       </Modal>
 

@@ -13,6 +13,8 @@ import { sumLines, toOrderLines, type Line } from './OrderBuilder';
 import { useProductPicker } from './ProductPicker';
 import { useStream } from '@/lib/realtime';
 import { useStaffMenu } from './menuHook';
+import { TableHistory } from './TableHistory';
+import { namesLabel } from './tableHistory';
 
 /** Mesa sem pedido novo há este tempo (e sem conta pedida): "parada", vale passar para ver se querem algo. */
 const IDLE_MIN = 40;
@@ -123,6 +125,7 @@ function TableMap({ total, comanda, calls, onOpen }: { total: number; comanda: (
             {c?.guests ? <span className="absolute left-1.5 top-1 flex items-center gap-0.5 text-[10px] font-semibold opacity-90"><Users size={10} />{c.guests}</span> : null}
             {c && <span className="absolute right-1.5 top-1 text-[10px] font-semibold opacity-90">{fmtMin(minutesSince(c.created_at))}</span>}
             <b className="text-2xl leading-none">{n}</b>
+            {c?.opened_by_name ? <span className="mt-0.5 max-w-full truncate text-[10px] font-medium opacity-80">{c.opened_by_name.split(' ')[0]}</span> : null}
             {c ? <span className="mt-1 text-xs font-bold">{brlc(c.total_cents)}</span> : <span className="mt-1 text-[11px] font-medium">Livre</span>}
             {s !== 'livre' && s !== 'ocupada' && <span className="mt-0.5 text-[10px] font-extrabold uppercase tracking-wide">{STATE[s].label}</span>}
           </button>))}
@@ -166,7 +169,8 @@ function TableView({ table, current, total, comanda, orders, onBack, onAdd, onMo
         <div className="text-4xl font-black leading-none">{table}</div>
         <div className="min-w-0 flex-1">
           <div className="text-xs font-bold uppercase tracking-wide opacity-80">Mesa · {s === 'pronto' ? 'pedido pronto, servir' : STATE[s].label}</div>
-          {current ? <div className="flex items-center gap-1.5 text-sm"><Clock size={13} /> aberta há {fmtMin(minutesSince(current.created_at))} · #{current.number}</div> : <div className="text-sm">Toque em "Abrir comanda" para lançar os primeiros itens.</div>}
+          {current ? <><div className="flex items-center gap-1.5 text-sm"><Clock size={13} /> aberta há {fmtMin(minutesSince(current.created_at))} · #{current.number}</div>
+            {(current.opened_by_name || current.staff_names?.length) ? <div className="mt-0.5 flex items-center gap-1.5 text-sm"><Users size={13} /> {current.opened_by_name ? `aberta por ${current.opened_by_name.split(' ')[0]}` : 'comanda'}{(current.staff_names ?? []).filter((n) => n !== current.opened_by_name).length > 0 ? ` · também: ${namesLabel((current.staff_names ?? []).filter((n) => n !== current.opened_by_name))}` : ''}</div> : null}</> : <div className="text-sm">Toque em "Abrir comanda" para lançar os primeiros itens.</div>}
         </div>
         {current && <div className="text-right"><div className="text-xs opacity-80">Total</div><div className="text-xl font-extrabold">{brlc(current.total_cents)}</div></div>}
       </div>
@@ -192,6 +196,7 @@ function TableView({ table, current, total, comanda, orders, onBack, onAdd, onMo
                   </div>))}
               </div>))}
           </div>
+          <TableHistory orderId={current.id} title={`Histórico da comanda #${current.number}`} version={`${current.items.length}|${current.status}|${current.bill_requested_at ?? ''}|${current.table_number ?? ''}|${current.paid}`} />
           <div className="grid grid-cols-2 gap-2">
             {current.bill_requested_at
               ? <button className="btn-ghost !py-3" disabled={act.busy} onClick={() => bill(false)}><X size={16} /> Cancelar conta</button>

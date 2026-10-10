@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Copy, Eye, ExternalLink, Plus, RefreshCw, Rocket, Save, UserPlus } from 'lucide-react';
+import { ArrowLeft, Copy, Eye, ExternalLink, Globe, Plus, RefreshCw, Rocket, Save, Trash2, UserPlus } from 'lucide-react';
 import { del, get, post, put, qs, brl, dt, ago } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Field, Modal } from '@/ui/kit';
@@ -101,6 +101,8 @@ export function StoreDetail() {
           <div className="max-h-96 divide-y divide-border overflow-y-auto">{act2.data?.items.map((i: any, k: number) => <div key={k} className="py-1.5 text-xs"><div className="flex items-center gap-2"><Badge cls={i.severity === 'error' ? 'bg-red-100 text-red-700' : i.severity === 'warn' ? 'bg-amber-100 text-amber-700' : undefined}>{i.source}</Badge><b>{i.event}</b><span className="ml-auto text-muted-foreground">{ago(i.at)}</span></div><div className="text-muted-foreground">{i.message}</div></div>)}{act2.data?.items.length === 0 && <p className="py-2 text-sm text-muted-foreground">Sem atividade.</p>}</div></section>
       </div>
 
+      <StoreDomains storeId={id!} />
+
       <section className="card mt-5 p-4"><h2 className="mb-1 font-semibold">Funcionalidades disponíveis</h2>
         <p className="mb-3 text-xs text-muted-foreground">Libera o uso por loja (atendimento WhatsApp e agente). Função ainda não construída aparece indisponível. Cada alteração pede o autenticador.</p>
         <ErrorBox>{feat.error}</ErrorBox>
@@ -139,5 +141,43 @@ export function StoreDetail() {
       </Modal>
       <span className="hidden"><ExternalLink /></span>
     </>
+  );
+}
+
+/** Domínios da loja: o super admin adiciona, verifica (DNS) e remove, sem depender do lojista. */
+function StoreDomains({ storeId }: { storeId: string }) {
+  const { stepUp } = useAuth(); const toast = useToast(); const act = useAction();
+  const l = useLoad(() => get(`/v1/platform/stores/${storeId}/domains`), [storeId]);
+  const [host, setHost] = useState(''); const [forced, setForced] = useState(false);
+  const copy = (t: string) => navigator.clipboard.writeText(t).then(() => toast('Copiado'));
+  const base = `/v1/platform/stores/${storeId}/domains`;
+  return (
+    <section className="card mt-5 p-4"><h2 className="mb-1 font-semibold">Domínios</h2>
+      <p className="mb-3 text-xs text-muted-foreground">O endereço da loja. O domínio próprio precisa de dois registros no DNS (CNAME e TXT) antes de ser verificado. Adicionar e remover pede o autenticador.</p>
+      <ErrorBox>{act.error ?? l.error}</ErrorBox>
+      {!l.data ? <Spinner /> : (
+        <div className="space-y-2">
+          {l.data.domains.length === 0 && <p className="text-sm text-muted-foreground">Nenhum domínio cadastrado.</p>}
+          {l.data.domains.map((d: any) => (
+            <div key={d.id} className="rounded-ui-sm border border-border p-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2"><Globe size={15} className="text-muted-foreground" /><b className="flex-1 break-all">{d.hostname}</b>
+                {d.verified ? <Badge cls="bg-green-100 text-green-700">{d.kind === 'subdomain' ? 'padrão' : 'verificado'}</Badge> : <Badge cls="bg-amber-100 text-amber-700">aguardando DNS</Badge>}
+                {d.kind === 'custom' && <button className="btn-danger !p-1.5" aria-label={`Remover ${d.hostname}`} disabled={act.busy} onClick={() => confirm(`Remover ${d.hostname}? A loja deixa de abrir por esse endereço.`) && act.run(async () => { await stepUp(() => del(`${base}/${d.id}`)); toast('Domínio removido'); await l.reload(); })}><Trash2 size={13} /></button>}</div>
+              {d.instructions && (
+                <div className="mt-2 space-y-1.5 rounded-ui-sm bg-muted/60 p-3 text-xs">
+                  <p>No provedor de DNS do domínio, crie <b>os dois registros</b> abaixo e clique em Verificar (pode levar de minutos a horas para propagar).</p>
+                  {([['CNAME', d.instructions.cname.name, d.instructions.cname.value], ['TXT', d.instructions.txt.name, d.instructions.txt.value]] as const).map(([t, name, value]) => (
+                    <div key={t} className="grid grid-cols-[48px_1fr_auto] items-center gap-2"><b>{t}</b><div className="min-w-0"><div className="truncate">Nome: <code>{name}</code></div><div className="truncate">Valor: <code>{value}</code></div></div><button className="btn-ghost !p-1.5" aria-label={`Copiar valor do ${t}`} onClick={() => copy(value)}><Copy size={12} /></button></div>))}
+                  {d.verifyError && <p className="text-destructive">{d.verifyError}</p>}
+                  <button className="btn !px-3 !py-1.5 text-xs" disabled={act.busy} onClick={() => act.run(async () => { try { await post(`${base}/${d.id}/verify`); toast('Domínio verificado!'); } finally { await l.reload(); } })}><RefreshCw size={13} /> Verificar agora</button>
+                </div>)}
+            </div>))}
+          <div className="flex flex-wrap items-end gap-2 pt-1">
+            <div className="min-w-[240px] flex-1"><Field label="Adicionar domínio próprio"><input className="input" placeholder="pedidos.sualoja.com.br" value={host} onChange={(e) => setHost(e.target.value.toLowerCase().trim())} /></Field></div>
+            <button className="btn" disabled={act.busy || !host.includes('.')} onClick={() => act.run(async () => { await stepUp(() => post(base, { hostname: host, markVerified: forced })); setHost(''); setForced(false); toast('Domínio adicionado'); await l.reload(); })}><Plus size={14} /> Adicionar</button>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={forced} onChange={(e) => setForced(e.target.checked)} /> Já está apontado corretamente: marcar como verificado sem checar o DNS</label>
+        </div>)}
+    </section>
   );
 }

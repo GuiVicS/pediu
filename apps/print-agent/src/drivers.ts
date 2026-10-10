@@ -72,3 +72,6 @@ export async function discoverPrinters(platform = process.platform): Promise<{ n
     return stdout.split('\n').map((l) => l.trim()).filter(Boolean).map((name) => ({ name, kind: 'cups' }));
   } catch { return []; }
 }
+
+/** Cupom de teste (ESC/POS): acentos em CP860, corte no fim. Usado pelo comando `test` e pela tela do agente. */
+export const testTicket = () => Buffer.from([0x1b, 0x40, 0x1b, 0x74, 0x03, ...Buffer.from('TESTE DE IMPRESSAO\nPediu Agente de Impressao\nAcentos: acao, coracao, pao\n\n\n\n'), 0x1d, 0x56, 0x42, 0x03]);

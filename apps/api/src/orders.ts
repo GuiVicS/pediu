@@ -51,11 +51,15 @@ const nextNumber = async (q: Q, storeId: string, tenantId: string) =>
 export const orderEvent = (q: Q, o: { orderId: string; storeId: string; tenantId: string }, actorKind: 'customer' | 'staff' | 'system', actorId: string | null, ev: string, data?: unknown) =>
   q`insert into order_events (order_id, store_id, tenant_id, actor_kind, actor_id, event, data) values (${o.orderId}, ${o.storeId}, ${o.tenantId}, ${actorKind}, ${actorId}, ${ev}, ${data === undefined ? null : JSON.stringify(data)}::jsonb)`;
 const event = orderEvent;
+/** Resumo dos itens para a linha do tempo da mesa ("2× Calabresa"): só nome e quantidade, no máximo 30. */
+const summarize = (lines: { name: string; qty: number }[]) => lines.slice(0, 30).map((l) => ({ name: l.name, qty: l.qty }));
 
 export async function insertOrder(q: Q, a: {
   storeId: string; tenantId: string; channel: 'loja' | 'pdv' | 'garcom' | 'ifood' | 'totem'; type: OrderType; lines: NonNullable<Awaited<ReturnType<typeof buildLines>>['lines']>;
   customerName: string; phone: string; address: string; zoneId: string | null; feeCents: number; table: number | null; note: string; payment: string; changeForCents: number | null;
-  createdBy: string | null; paid?: boolean; status?: OrderStatus; customerId?: string | null;
+  createdBy: string | null; paid?: boolean; status?: OrderStatus; customerId?: string | null; customerEmail?: string | null;
+  /** quem aparece no histórico como autor (padrão: createdBy); usado pelo MCP da loja: "mcp:<token>" */
+  actorId?: string | null;
   pay?: PayInfo; cashSessionId?: string | null;
   discountCents?: number; paidMethod?: string; external?: { provider: string; ref: string; data?: unknown };
 }) {
@@ -65,17 +69,17 @@ export async function insertOrder(q: Q, a: {
   const number = await nextNumber(q, a.storeId, a.tenantId);
   const [o] = await q`insert into orders (store_id, tenant_id, number, channel, type, status, customer_name, customer_phone, address, zone_id, table_number, note,
       subtotal_cents, fee_cents, discount_cents, total_cents, payment_method, change_for_cents, paid, paid_at, paid_method, created_by, external_provider, external_ref, external_data, customer_id,
-      paid_type, payment_mode, cash_received_cents, change_cents, payment_ref, paid_by, cash_session_id)
+      paid_type, payment_mode, cash_received_cents, change_cents, payment_ref, paid_by, cash_session_id, customer_email)
     values (${a.storeId}, ${a.tenantId}, ${number}, ${a.channel}, ${a.type}, ${a.status ?? 'novo'}, ${a.customerName}, ${a.phone}, ${a.address}, ${a.zoneId}, ${a.table}, ${a.note},
       ${subtotal}, ${a.feeCents}, ${discount}, ${total}, ${a.payment}, ${a.changeForCents}, ${!!a.paid}, ${a.paid ? new Date().toISOString() : null}, ${a.paid ? (a.paidMethod ?? a.payment) : null}, ${a.createdBy},
       ${a.external?.provider ?? null}, ${a.external?.ref ?? null}, ${a.external?.data === undefined ? null : JSON.stringify(a.external.data)}::jsonb, ${a.customerId ?? null},
-      ${a.paid ? a.pay?.type ?? null : null}, ${a.paid ? a.pay?.mode ?? null : null}, ${a.pay?.receivedCents ?? null}, ${a.pay?.changeCents ?? null}, ${a.pay?.ref ?? null}, ${a.paid ? a.createdBy : null}, ${a.cashSessionId ?? null})
+      ${a.paid ? a.pay?.type ?? null : null}, ${a.paid ? a.pay?.mode ?? null : null}, ${a.pay?.receivedCents ?? null}, ${a.pay?.changeCents ?? null}, ${a.pay?.ref ?? null}, ${a.paid ? a.createdBy : null}, ${a.cashSessionId ?? null}, ${a.customerEmail ?? null})
     returning id, number, tracking_token, total_cents`;
   for (const l of a.lines) {
     await q`insert into order_items (order_id, store_id, tenant_id, product_id, name, qty, unit_cents, total_cents, note, addons, print_zone_id)
             values (${o!.id}, ${a.storeId}, ${a.tenantId}, ${l.productId}, ${l.name}, ${l.qty}, ${l.unitCents}, ${l.totalCents}, ${l.note}, ${JSON.stringify(l.addons)}::jsonb, ${l.zoneId})`;
   }
-  await event(q, { orderId: o!.id, storeId: a.storeId, tenantId: a.tenantId }, a.channel === 'loja' || a.channel === 'totem' ? 'customer' : 'staff', a.createdBy, 'created', { channel: a.channel, total: total });
+  await event(q, { orderId: o!.id, storeId: a.storeId, tenantId: a.tenantId }, a.channel === 'loja' || a.channel === 'totem' ? 'customer' : 'staff', a.actorId ?? a.createdBy, 'created', { channel: a.channel, total: total, table: a.table, items: summarize(a.lines) });
   return { id: o!.id as string, number: o!.number as number, trackingToken: o!.tracking_token as string, totalCents: total };
 }
 
@@ -95,7 +99,7 @@ export async function appendItems(q: Q, o: { id: string; storeId: string; tenant
   const subtotal = o.subtotalCents + add;
   await q`update orders set subtotal_cents = ${subtotal}, total_cents = ${subtotal + o.feeCents - o.discountCents},
           status = case when status in ('pronto') then 'preparo' else status end, ready_at = case when status = 'pronto' then null else ready_at end, bill_requested_at = null where id = ${o.id}`;
-  await event(q, { orderId: o.id, storeId: o.storeId, tenantId: o.tenantId }, actor.kind, actor.id, 'items_added', { added: lines.length, addedCents: add });
+  await event(q, { orderId: o.id, storeId: o.storeId, tenantId: o.tenantId }, actor.kind, actor.id, 'items_added', { added: lines.length, addedCents: add, items: summarize(lines) });
   return { totalCents: subtotal + o.feeCents - o.discountCents, newIds };
 }
 
@@ -119,6 +123,111 @@ const viewableStore = async (ctx: Ctx, req: FastifyRequest, slug: string) => {
   const staff = await loadStaff(ctx, req);
   return staff && staff.storeId === s.storeId && staff.tenantId === s.tenantId ? s : null;
 };
+
+export const staffOrderIn = z.object({
+  type: z.enum(['delivery', 'retirada', 'mesa']), customerName: z.string().trim().max(80).default(''), phone: z.string().trim().max(20).default(''),
+  address: z.string().trim().max(200).default(''), zoneId: uuid.optional(), table: z.number().int().min(1).max(500).optional(), guests: z.number().int().min(1).max(99).optional(), note: z.string().max(300).default(''),
+  paymentId: uuid.optional(), receiveNow: z.boolean().default(false), lines: z.array(lineIn).min(1).max(60),
+  receivedCents: z.number().int().min(0).max(100_000_000).optional(), reference: z.string().trim().max(40).optional(),
+  couponCode: z.string().trim().max(30).optional(), customerId: uuid.optional(),
+});
+export type StaffOrderInput = z.infer<typeof staffOrderIn>;
+export type CreateResult = { ok: true; id: string; number: number; totalCents: number; changeCents: number } | { ok: false; httpStatus: number; code: string; message: string };
+
+/**
+ * Lança um pedido feito pela equipe (PDV: balcão/entrega; garçom: mesa). Compartilhado pelo painel/apps e pelo MCP da loja.
+ * `staffId` nulo = quem lança é um token do MCP: sem caixa aberto e autor no histórico = `actorId`.
+ */
+export async function createStaffOrder(ctx: Ctx, s: { tenantId: string; storeId: string; staffId: string | null; actorId: string | null }, b: StaffOrderInput): Promise<CreateResult> {
+  if (b.type === 'mesa' && !b.table) return { ok: false, httpStatus: 400, code: 'invalid_input', message: 'Informe o número da mesa.' };
+  if (b.type === 'delivery' && (!b.customerName || !b.address || !b.zoneId)) return { ok: false, httpStatus: 400, code: 'invalid_input', message: 'Entrega exige nome, endereço e região.' };
+  const channel = b.type === 'mesa' ? 'garcom' : 'pdv';
+  try {
+    const out = await withTenant(ctx.pools, s.tenantId, async (q) => {
+      const built = await buildLines(q, s.storeId, b.lines);
+      if ('error' in built) return { ok: false as const, httpStatus: 422, code: 'invalid_items', message: built.error! };
+      let fee = 0, zone: { id: string; name: string } | null = null;
+      if (b.type === 'delivery') {
+        const [z] = await q`select id, name, fee from delivery_zones where id = ${b.zoneId!} and store_id = ${s.storeId} and active`;
+        if (!z) return { ok: false as const, httpStatus: 422, code: 'invalid_zone', message: 'Região de entrega inválida.' };
+        fee = toCents(Number(z.fee)); zone = { id: z.id, name: z.name };
+      }
+      if (b.customerId) { const [c] = await q`select 1 as ok from store_customers where id = ${b.customerId} and store_id = ${s.storeId}`; if (!c) return { ok: false as const, httpStatus: 422, code: 'invalid_customer', message: 'Cliente não encontrado.' }; }
+      const subtotal = built.lines!.reduce((n, l) => n + l.totalCents, 0);
+      let coupon: Extract<Awaited<ReturnType<typeof evaluateCoupon>>, { ok: true }> | null = null;
+      if (b.couponCode) {
+        const r = await evaluateCoupon(ctx, q, s.storeId, { code: b.couponCode, subtotalCents: subtotal, customerId: b.customerId ?? null, phone: b.phone, lock: true });
+        if (!r.ok) return { ok: false as const, httpStatus: 422, code: 'coupon_invalid', message: r.error };
+        coupon = r;
+      }
+      const total = subtotal + fee - (coupon?.discountCents ?? 0);
+      let pay: Record<string, any> | undefined; let payInfo: PayInfo | undefined;
+      if (b.paymentId) {
+        [pay] = await q`select name from payment_methods where id = ${b.paymentId} and store_id = ${s.storeId} and active`;
+        if (!pay) return { ok: false as const, httpStatus: 422, code: 'invalid_payment', message: 'Forma de pagamento indisponível.' };
+        if (b.receiveNow) { const r = await resolvePayInfo(q, s.storeId, b.paymentId, total, { receivedCents: b.receivedCents, reference: b.reference }); if ('error' in r) return { ok: false as const, httpStatus: 422, code: 'invalid_payment', message: r.error }; payInfo = r; }
+      }
+      if (b.receiveNow && !pay) return { ok: false as const, httpStatus: 422, code: 'invalid_payment', message: 'Informe a forma de pagamento para receber.' };
+      const cashSessionId = s.staffId && (b.receiveNow || channel === 'pdv') ? await openCashSessionId(q, s.storeId, s.staffId) : null;
+      const o = await insertOrder(q, { storeId: s.storeId, tenantId: s.tenantId, channel, type: b.type, lines: built.lines!, customerName: b.customerName || (b.type === 'mesa' ? `Mesa ${b.table}` : 'Balcão'),
+        phone: b.phone, address: zone ? `${b.address} — ${zone.name}` : '', zoneId: zone?.id ?? null, feeCents: fee, table: b.type === 'mesa' ? b.table! : null, note: b.note,
+        payment: pay?.name ?? '', changeForCents: null, createdBy: s.staffId, actorId: s.actorId, paid: b.receiveNow, status: b.receiveNow ? 'preparo' : 'novo',
+        discountCents: coupon?.discountCents ?? 0, customerId: b.customerId ?? null, pay: payInfo, cashSessionId });
+      if (b.type === 'mesa' && b.guests) await q`update orders set guests = ${b.guests} where id = ${o.id}`;
+      if (coupon) await redeemCoupon(q, { couponId: coupon.couponId, storeId: s.storeId, tenantId: s.tenantId, orderId: o.id, code: coupon.code, customerId: b.customerId ?? null, phone: b.phone, discountCents: coupon.discountCents });
+      return { ok: true as const, o, changeCents: payInfo?.changeCents ?? 0 };
+    });
+    if (!out.ok) return out;
+    await afterOrder(ctx, s, { kind: 'created', id: out.o.id, number: out.o.number, orderType: b.type, status: b.receiveNow ? 'preparo' : 'novo', print: b.receiveNow ? ['novo', 'preparo'] : ['novo'] });
+    return { ok: true, id: out.o.id, number: out.o.number, totalCents: out.o.totalCents, changeCents: out.changeCents };
+  } catch (e) {
+    if ((e as { code?: string }).code === '23505') return { ok: false, httpStatus: 409, code: 'table_busy', message: 'Esta mesa já tem uma comanda aberta. Adicione itens a ela.' };
+    throw e;
+  }
+}
+
+export interface StatusActor {
+  tenantId: string; storeId: string;
+  /** funcionário logado (uuid) — ou null quando quem age é um token do MCP da loja */
+  staffId: string | null;
+  /** quem aparece no histórico e na auditoria: o uuid do funcionário ou "mcp:<id do token>" */
+  actorId: string | null;
+  role: Role; ip?: string;
+}
+export type StatusResult = { ok: true; status: OrderStatus; number: number; orderType: string; warning?: string } | { ok: false; httpStatus: number; code: string; message: string };
+
+/**
+ * Muda o status de um pedido respeitando o fluxo e o perfil (compartilhado pelo painel/apps e pelo MCP da loja).
+ * Registra o histórico, avisa as telas em tempo real, manda imprimir o que for preciso e sincroniza com o iFood.
+ */
+export async function changeOrderStatus(ctx: Ctx, s: StatusActor, id: string, to: OrderStatus, reason?: string): Promise<StatusResult> {
+  const out = await withTenant(ctx.pools, s.tenantId, async (q) => {
+    const [o] = await q`select id, type, status, paid, courier_id, number, payment_method from orders where id = ${id} and store_id = ${s.storeId} for update`;
+    if (!o) return { ok: false as const, httpStatus: 404, code: 'not_found', message: 'Pedido não encontrado.' };
+    if (!canTransition(o.type as OrderType, o.status, to)) return { ok: false as const, httpStatus: 422, code: 'invalid_transition', message: `Não é possível ir de "${o.status}" para "${to}".` };
+    if (!roleCanTransition(s.role, o.type as OrderType, o.status, to)) return { ok: false as const, httpStatus: 403, code: 'forbidden', message: 'Seu perfil não pode fazer esta mudança.' };
+    if (to === 'cancelado' && !reason?.trim()) return { ok: false as const, httpStatus: 400, code: 'reason_required', message: 'Informe o motivo do cancelamento.' };
+    if (s.role === 'entregador' && (to === 'saiu' || to === 'entregue') && o.courier_id && o.courier_id !== s.staffId) return { ok: false as const, httpStatus: 409, code: 'taken', message: 'Esta entrega pertence a outro entregador.' };
+    const ts = { preparo: 'accepted_at', pronto: 'ready_at', saiu: 'dispatched_at', entregue: 'delivered_at', cancelado: 'cancelled_at' } as Record<string, string>;
+    const col = ts[to];
+    const collect = to === 'entregue' && s.role === 'entregador' && !o.paid;       // o entregador recebeu na porta (dinheiro/maquininha)
+    const courier = to === 'saiu' && s.role === 'entregador' ? s.staffId : null;
+    await q`update orders set paid = paid or ${collect}, paid_at = case when ${collect} then now() else paid_at end, paid_method = case when ${collect} then payment_method else paid_method end where id = ${id}`;
+    await q`update orders set status = ${to},
+        accepted_at = case when ${col === 'accepted_at'} then now() else accepted_at end, ready_at = case when ${col === 'ready_at'} then now() else ready_at end,
+        dispatched_at = case when ${col === 'dispatched_at'} then now() else dispatched_at end, delivered_at = case when ${col === 'delivered_at'} then now() else delivered_at end,
+        cancelled_at = case when ${col === 'cancelled_at'} then now() else cancelled_at end, cancel_reason = case when ${to === 'cancelado'} then ${reason ?? null} else cancel_reason end,
+        courier_id = coalesce(${courier}::uuid, courier_id) where id = ${id}`;
+    await event(q, { orderId: id, storeId: s.storeId, tenantId: s.tenantId }, 'staff', s.actorId, `status:${to}`, { from: o.status, reason });
+    if (to === 'cancelado') await audit(q, { actorKind: 'staff', actorId: s.actorId, tenantId: s.tenantId, storeId: s.storeId, action: 'order.cancelled', ip: s.ip, meta: { number: o.number, reason, from: o.status } });
+    return { ok: true as const, status: to, number: o.number as number, orderType: o.type as string };
+  });
+  if (!out.ok) return out;
+  const printKind = { preparo: 'preparo', pronto: 'pronto', cancelado: 'cancelado' } as const;
+  await afterOrder(ctx, s, { kind: 'status', id, number: out.number, orderType: out.orderType, status: to, print: to in printKind ? [printKind[to as keyof typeof printKind]] : [], cancelReason: reason });
+  const warning = await syncStatusToIfood(ctx, { storeId: s.storeId, orderId: id, to, type: out.orderType, cancelReason: reason });
+  return { ...out, ...(warning ? { warning } : {}) };
+}
 
 export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
   // ---------------- público: a loja online ----------------
@@ -183,7 +292,7 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
       if (pay.type === 'cash' && b.changeFor !== undefined && toCents(b.changeFor) < total) return { ok: false as const, status: 422, code: 'invalid_change', message: 'O valor para troco é menor que o total.' };
       const o = await insertOrder(q, { storeId: store.storeId, tenantId: store.tenantId, channel: 'loja', type: b.type, lines: built.lines!, customerName: b.customerName, phone: b.phone,
         address: zone ? `${b.address} — ${zone.name}` : '', zoneId: zone?.id ?? null, feeCents: fee, table: null, note: b.note, payment: pay.name,
-        changeForCents: pay.type === 'cash' && b.changeFor !== undefined ? toCents(b.changeFor) : null, createdBy: null, status: pay.online ? 'aguardando' : 'novo', customerId: customer?.id ?? null, discountCents: coupon?.discountCents });
+        changeForCents: pay.type === 'cash' && b.changeFor !== undefined ? toCents(b.changeFor) : null, createdBy: null, status: pay.online ? 'aguardando' : 'novo', customerId: customer?.id ?? null, customerEmail: (customer?.email ?? b.email)?.toLowerCase() ?? null, discountCents: coupon?.discountCents });
       if (coupon) await redeemCoupon(q, { couponId: coupon.couponId, storeId: store.storeId, tenantId: store.tenantId, orderId: o.id, code: coupon.code, customerId: customer?.id ?? null, phone: b.phone, discountCents: coupon.discountCents });
       if (customer) await q`update store_customers set name = case when name = '' then ${b.customerName} else name end, phone = case when phone = '' then ${b.phone} else phone end where id = ${customer.id}`;
       return { ok: true as const, o, online: pay.online ? { gateway: pay.gateway as 'mercadopago' | 'sicoob', method: (pay.type === 'credit' ? 'card' : 'pix') as 'pix' | 'card' } : null };
@@ -229,7 +338,10 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!perms.pedidos && !perms.garcom && !perms.motoboy) return fail(reply, 403, 'forbidden', 'Seu perfil não acessa pedidos.');
     return withTenant(ctx.pools, s.tenantId, async (q) => {
       const rows = await q`select id, number, channel, type, status, customer_name, customer_phone, address, table_number, note, subtotal_cents, fee_cents, discount_cents, total_cents,
-          payment_method, change_for_cents, paid, paid_at, paid_type, payment_mode, cash_received_cents, change_cents, payment_ref, courier_id, guests, bill_requested_at, created_at, accepted_at, ready_at, dispatched_at, delivered_at, cancelled_at, cancel_reason
+          payment_method, change_for_cents, paid, paid_at, paid_type, payment_mode, cash_received_cents, change_cents, payment_ref, courier_id, guests, bill_requested_at, created_at, accepted_at, ready_at, dispatched_at, delivered_at, cancelled_at, cancel_reason,
+          orders.route_id, orders.route_stop,
+          (select u.name from staff_users u where u.id = orders.created_by) as opened_by_name,
+          (select coalesce(jsonb_agg(t.n order by t.n), '[]'::jsonb) from (select distinct u.name as n from order_events e join staff_users u on u.id::text = e.actor_id where e.order_id = orders.id and e.actor_kind = 'staff') t) as staff_names
         from orders where store_id = ${s.storeId}
           and (${qs.open ?? null}::text is null or status not in ('entregue', 'cancelado'))
           and (${qs.status ?? null}::text is null or status = ${qs.status ?? null})
@@ -244,59 +356,11 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
   // lançamento no PDV (balcão/entrega) ou comanda do garçom (mesa)
   app.post(S, { preHandler: staffGuard(ctx) }, async (req, reply) => {
     const s = req.staff!;
-    const b = parse(z.object({
-      type: z.enum(['delivery', 'retirada', 'mesa']), customerName: z.string().trim().max(80).default(''), phone: z.string().trim().max(20).default(''),
-      address: z.string().trim().max(200).default(''), zoneId: uuid.optional(), table: z.number().int().min(1).max(500).optional(), guests: z.number().int().min(1).max(99).optional(), note: z.string().max(300).default(''),
-      paymentId: uuid.optional(), receiveNow: z.boolean().default(false), lines: z.array(lineIn).min(1).max(60),
-      receivedCents: z.number().int().min(0).max(100_000_000).optional(), reference: z.string().trim().max(40).optional(),
-      couponCode: z.string().trim().max(30).optional(), customerId: uuid.optional(),
-    }), req.body, reply); if (!b) return;
+    const b = parse(staffOrderIn, req.body, reply); if (!b) return;
     if (b.type === 'mesa' ? !can(s.role, 'garcom') && !can(s.role, 'pdv') : !can(s.role, 'pdv')) return fail(reply, 403, 'forbidden', 'Seu perfil não pode lançar este tipo de pedido.');
-    if (b.type === 'mesa' && !b.table) return fail(reply, 400, 'invalid_input', 'Informe o número da mesa.');
-    if (b.type === 'delivery' && (!b.customerName || !b.address || !b.zoneId)) return fail(reply, 400, 'invalid_input', 'Entrega exige nome, endereço e região.');
-    const channel = b.type === 'mesa' ? 'garcom' : 'pdv';
-    try {
-      const out = await withTenant(ctx.pools, s.tenantId, async (q) => {
-        const built = await buildLines(q, s.storeId, b.lines);
-        if ('error' in built) return { ok: false as const, status: 422, code: 'invalid_items', message: built.error! };
-        let fee = 0, zone: { id: string; name: string } | null = null;
-        if (b.type === 'delivery') {
-          const [z] = await q`select id, name, fee from delivery_zones where id = ${b.zoneId!} and store_id = ${s.storeId} and active`;
-          if (!z) return { ok: false as const, status: 422, code: 'invalid_zone', message: 'Região de entrega inválida.' };
-          fee = toCents(Number(z.fee)); zone = { id: z.id, name: z.name };
-        }
-        if (b.customerId) { const [c] = await q`select 1 as ok from store_customers where id = ${b.customerId} and store_id = ${s.storeId}`; if (!c) return { ok: false as const, status: 422, code: 'invalid_customer', message: 'Cliente não encontrado.' }; }
-        const subtotal = built.lines!.reduce((n, l) => n + l.totalCents, 0);
-        let coupon: Extract<Awaited<ReturnType<typeof evaluateCoupon>>, { ok: true }> | null = null;
-        if (b.couponCode) {
-          const r = await evaluateCoupon(ctx, q, s.storeId, { code: b.couponCode, subtotalCents: subtotal, customerId: b.customerId ?? null, phone: b.phone, lock: true });
-          if (!r.ok) return { ok: false as const, status: 422, code: 'coupon_invalid', message: r.error };
-          coupon = r;
-        }
-        const total = subtotal + fee - (coupon?.discountCents ?? 0);
-        let pay: Record<string, any> | undefined; let payInfo: PayInfo | undefined;
-        if (b.paymentId) {
-          [pay] = await q`select name from payment_methods where id = ${b.paymentId} and store_id = ${s.storeId} and active`;
-          if (!pay) return { ok: false as const, status: 422, code: 'invalid_payment', message: 'Forma de pagamento indisponível.' };
-          if (b.receiveNow) { const r = await resolvePayInfo(q, s.storeId, b.paymentId, total, { receivedCents: b.receivedCents, reference: b.reference }); if ('error' in r) return { ok: false as const, status: 422, code: 'invalid_payment', message: r.error }; payInfo = r; }
-        }
-        if (b.receiveNow && !pay) return { ok: false as const, status: 422, code: 'invalid_payment', message: 'Informe a forma de pagamento para receber.' };
-        const cashSessionId = b.receiveNow || channel === 'pdv' ? await openCashSessionId(q, s.storeId, s.staffId) : null;
-        const o = await insertOrder(q, { storeId: s.storeId, tenantId: s.tenantId, channel, type: b.type, lines: built.lines!, customerName: b.customerName || (b.type === 'mesa' ? `Mesa ${b.table}` : 'Balcão'),
-          phone: b.phone, address: zone ? `${b.address} — ${zone.name}` : '', zoneId: zone?.id ?? null, feeCents: fee, table: b.type === 'mesa' ? b.table! : null, note: b.note,
-          payment: pay?.name ?? '', changeForCents: null, createdBy: s.staffId, paid: b.receiveNow, status: b.receiveNow ? 'preparo' : 'novo',
-          discountCents: coupon?.discountCents ?? 0, customerId: b.customerId ?? null, pay: payInfo, cashSessionId });
-        if (b.type === 'mesa' && b.guests) await q`update orders set guests = ${b.guests} where id = ${o.id}`;
-        if (coupon) await redeemCoupon(q, { couponId: coupon.couponId, storeId: s.storeId, tenantId: s.tenantId, orderId: o.id, code: coupon.code, customerId: b.customerId ?? null, phone: b.phone, discountCents: coupon.discountCents });
-        return { ok: true as const, o, changeCents: payInfo?.changeCents ?? 0 };
-      });
-      if (!out.ok) return fail(reply, out.status, out.code, out.message);
-      await afterOrder(ctx, s, { kind: 'created', id: out.o.id, number: out.o.number, orderType: b.type, status: b.receiveNow ? 'preparo' : 'novo', print: b.receiveNow ? ['novo', 'preparo'] : ['novo'] });
-      return reply.status(201).send({ id: out.o.id, number: out.o.number, totalCents: out.o.totalCents, changeCents: out.changeCents });
-    } catch (e) {
-      if ((e as { code?: string }).code === '23505') return fail(reply, 409, 'table_busy', 'Esta mesa já tem uma comanda aberta. Adicione itens a ela.');
-      throw e;
-    }
+    const r = await createStaffOrder(ctx, { tenantId: s.tenantId, storeId: s.storeId, staffId: s.staffId, actorId: s.staffId }, b);
+    if (!r.ok) return fail(reply, r.httpStatus, r.code, r.message);
+    return reply.status(201).send({ id: r.id, number: r.number, totalCents: r.totalCents, changeCents: r.changeCents });
   });
 
   // adicionar itens à comanda aberta da mesa (volta para a cozinha)
@@ -358,31 +422,9 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
     const s = req.staff!;
     const id = parse(uuid, (req.params as { id: string }).id, reply); if (!id) return;
     const b = parse(z.object({ to: z.enum(['novo', 'preparo', 'pronto', 'saiu', 'entregue', 'cancelado']), reason: z.string().max(200).optional() }), req.body, reply); if (!b) return;
-    const out = await withTenant(ctx.pools, s.tenantId, async (q) => {
-      const [o] = await q`select id, type, status, paid, courier_id, number, payment_method from orders where id = ${id} and store_id = ${s.storeId} for update`;
-      if (!o) return { ok: false as const, status: 404, code: 'not_found', message: 'Pedido não encontrado.' };
-      if (!canTransition(o.type as OrderType, o.status, b.to)) return { ok: false as const, status: 422, code: 'invalid_transition', message: `Não é possível ir de "${o.status}" para "${b.to}".` };
-      if (!roleCanTransition(s.role as Role, o.type as OrderType, o.status, b.to)) return { ok: false as const, status: 403, code: 'forbidden', message: 'Seu perfil não pode fazer esta mudança.' };
-      if (b.to === 'cancelado' && !b.reason?.trim()) return { ok: false as const, status: 400, code: 'reason_required', message: 'Informe o motivo do cancelamento.' };
-      if (s.role === 'entregador' && (b.to === 'saiu' || b.to === 'entregue') && o.courier_id && o.courier_id !== s.staffId) return { ok: false as const, status: 409, code: 'taken', message: 'Esta entrega pertence a outro entregador.' };
-      const ts = { preparo: 'accepted_at', pronto: 'ready_at', saiu: 'dispatched_at', entregue: 'delivered_at', cancelado: 'cancelled_at' } as Record<string, string>;
-      const col = ts[b.to];
-      const collect = b.to === 'entregue' && s.role === 'entregador' && !o.paid;       // o entregador recebeu na porta (dinheiro/maquininha)
-      await q`update orders set paid = paid or ${collect}, paid_at = case when ${collect} then now() else paid_at end, paid_method = case when ${collect} then payment_method else paid_method end where id = ${id}`;
-      await q`update orders set status = ${b.to},
-          accepted_at = case when ${col === 'accepted_at'} then now() else accepted_at end, ready_at = case when ${col === 'ready_at'} then now() else ready_at end,
-          dispatched_at = case when ${col === 'dispatched_at'} then now() else dispatched_at end, delivered_at = case when ${col === 'delivered_at'} then now() else delivered_at end,
-          cancelled_at = case when ${col === 'cancelled_at'} then now() else cancelled_at end, cancel_reason = case when ${b.to === 'cancelado'} then ${b.reason ?? null} else cancel_reason end,
-          courier_id = case when ${b.to === 'saiu' && s.role === 'entregador'} then ${s.staffId}::uuid else courier_id end where id = ${id}`;
-      await event(q, { orderId: id, storeId: s.storeId, tenantId: s.tenantId }, 'staff', s.staffId, `status:${b.to}`, { from: o.status, reason: b.reason });
-      if (b.to === 'cancelado') await audit(q, { actorKind: 'staff', actorId: s.staffId, tenantId: s.tenantId, storeId: s.storeId, action: 'order.cancelled', ip: req.ip, meta: { number: o.number, reason: b.reason, from: o.status } });
-      return { ok: true as const, status: b.to, number: o.number as number, orderType: o.type as string };
-    });
-    if (!out.ok) return fail(reply, out.status, out.code, out.message);
-    const printKind = { preparo: 'preparo', pronto: 'pronto', cancelado: 'cancelado' } as const;
-    await afterOrder(ctx, s, { kind: 'status', id, number: out.number, orderType: out.orderType, status: b.to, print: b.to in printKind ? [printKind[b.to as keyof typeof printKind]] : [], cancelReason: b.reason });
-    const warning = await syncStatusToIfood(ctx, { storeId: s.storeId, orderId: id, to: b.to, type: out.orderType, cancelReason: b.reason });
-    return { ok: true, status: out.status, ...(warning ? { warning } : {}) };
+    const r = await changeOrderStatus(ctx, { tenantId: s.tenantId, storeId: s.storeId, staffId: s.staffId, actorId: s.staffId, role: s.role as Role, ip: req.ip }, id, b.to, b.reason);
+    if (!r.ok) return fail(reply, r.httpStatus, r.code, r.message);
+    return { ok: true, status: r.status, ...(r.warning ? { warning: r.warning } : {}) };
   });
 
   // receber (PDV): marca como pago; em mesa, receber a conta encerra a comanda
@@ -416,11 +458,20 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
     return { ok: true, totalCents: out.totalCents, changeCents: out.changeCents };
   });
 
-  // linha do tempo do pedido
+  // linha do tempo do pedido (com o nome de quem fez cada coisa). O garçom enxerga a das mesas.
   app.get(`${S}/:id/events`, { preHandler: staffGuard(ctx) }, async (req, reply) => {
     const s = req.staff!;
     const id = parse(uuid, (req.params as { id: string }).id, reply); if (!id) return;
-    if (!(can(s.role, 'admin.pedidos') || can(s.role, 'pdv'))) return fail(reply, 403, 'forbidden', 'Seu perfil não acessa o histórico.');
-    return { events: await withTenant(ctx.pools, s.tenantId, (q) => q`select at, actor_kind, event, data from order_events where order_id = ${id} and store_id = ${s.storeId} order by id`) };
+    const full = can(s.role, 'admin.pedidos') || can(s.role, 'pdv');
+    if (!full && !can(s.role, 'garcom')) return fail(reply, 403, 'forbidden', 'Seu perfil não acessa o histórico.');
+    const events = await withTenant(ctx.pools, s.tenantId, async (q) => {
+      const [o] = await q`select type from orders where id = ${id} and store_id = ${s.storeId}`;
+      if (!o || (!full && o.type !== 'mesa')) return null;
+      return q`select e.at, e.actor_kind, e.event, e.data, coalesce(u.name, t.name || ' (MCP)') as actor_name, u.role as actor_role
+               from order_events e left join staff_users u on e.actor_kind = 'staff' and u.id::text = e.actor_id and u.store_id = e.store_id
+               left join store_mcp_tokens t on e.actor_id = 'mcp:' || t.id::text and t.store_id = e.store_id
+               where e.order_id = ${id} and e.store_id = ${s.storeId} order by e.id`;
+    });
+    return events ? { events } : fail(reply, 404, 'not_found', 'Pedido não encontrado.');
   });
 }

@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import CheckoutPage from '@/store/checkout/CheckoutPage';
 import { RequirePerm, SessionProvider, HOME, useSession } from '@/lib/session';
 import Login from '@/pages/Login';
 import StoreLayout from '@/store/StoreLayout';
@@ -72,6 +73,7 @@ export default function App() {
           <Route index element={<HomePage />} />
           <Route path="categoria/:id" element={<CategoryPage />} />
           <Route path="pedidos" element={<OrdersPage />} />
+          <Route path="finalizar" element={<CheckoutPage />} />
           <Route path="conta" element={<AccountPage />} />
           <Route path="empresa" element={<AboutPage />} />
         </Route>

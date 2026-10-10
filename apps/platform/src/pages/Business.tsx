@@ -262,3 +262,40 @@ export function AiSettings() {
     </>
   );
 }
+
+// ---------------- e-mail da plataforma (Resend) ----------------
+export function MailSettings() {
+  const l = useLoad(() => get('/v1/platform/mail-settings'), []);
+  const { stepUp } = useAuth(); const act = useAction(); const toast = useToast();
+  const [apiKey, setApiKey] = useState(''); const [from, setFrom] = useState<string | null>(null);
+  const [to, setTo] = useState(''); const [test, setTest] = useState<{ ok: boolean; ms?: number; error?: string } | null>(null);
+  if (!l.data) return <Spinner />;
+  const saved: { from: string; hasKey: boolean } | null = l.data.saved;
+  const active: 'resend' | 'smtp' | null = l.data.active;
+  const fromValue = from ?? saved?.from ?? 'PediuLanchou <nao-responda@pediulanchou.com.br>';
+  const canSave = fromValue.includes('@') && (!!apiKey.trim() || !!saved?.hasKey) && (apiKey.trim().length >= 10 || !apiKey);
+  return (
+    <>
+      <PageHeader title="E-mail da plataforma" subtitle="Envia o código de acesso e a recuperação de senha dos clientes. O remetente é sempre da PediuLanchou; cor, logo e nome da loja vão dentro do e-mail, com a logo preta da PediuLanchou e o link da landing no rodapé." />
+      <ErrorBox>{act.error ?? l.error}</ErrorBox>
+      <div className="card max-w-xl space-y-3 p-4 text-sm">
+        <div className="flex items-center gap-2"><b>Em uso agora:</b> {active === 'resend' ? <Badge cls="bg-green-100 text-green-700">Resend (painel)</Badge> : active === 'smtp' ? <Badge cls="bg-blue-100 text-blue-700">SMTP (variáveis de ambiente)</Badge> : <Badge cls="bg-red-100 text-red-700">Nenhum — login por código desativado</Badge>}</div>
+        <Field label="Chave de API do Resend" hint={saved?.hasKey ? 'Já há uma chave salva (cifrada). Deixe em branco para manter.' : 'Crie em resend.com › API Keys. Fica cifrada e nunca volta para esta tela.'}>
+          <input className="input" type="password" autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={saved?.hasKey ? '••••••••••••' : 're_...'} />
+        </Field>
+        <Field label="Remetente" hint="Precisa ser de um domínio verificado no Resend (SPF/DKIM). Ex.: PediuLanchou <nao-responda@pediulanchou.com.br>">
+          <input className="input" value={fromValue} onChange={(e) => setFrom(e.target.value)} />
+        </Field>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn" disabled={act.busy || !canSave} onClick={() => act.run(async () => { await stepUp(() => put('/v1/platform/mail-settings', { ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}), from: fromValue.trim() })); toast('E-mail configurado'); setApiKey(''); setFrom(null); l.reload(); })}><Save size={14} /> Salvar</button>
+          {saved && <button className="btn-danger" disabled={act.busy} onClick={() => confirm('Remover o Resend? O envio volta para o SMTP do ambiente (se houver).') && act.run(async () => { await stepUp(() => del('/v1/platform/mail-settings')); toast('Resend removido'); l.reload(); })}><Trash2 size={14} /> Remover</button>}
+        </div>
+        <div className="space-y-2 border-t border-border pt-3">
+          <Field label="Enviar e-mail de teste para"><input className="input" type="email" value={to} onChange={(e) => { setTo(e.target.value); setTest(null); }} placeholder="voce@exemplo.com" /></Field>
+          <button className="btn-ghost" disabled={act.busy || !to.includes('@') || !active} onClick={async () => { const r = await act.run(() => post<{ ok: boolean; ms?: number; error?: string }>('/v1/platform/mail-settings/test', { to })); if (r) setTest(r); }}>{act.busy ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />} Testar envio</button>
+          {test && (test.ok ? <p className="text-green-700">Enviado em {test.ms} ms. Confira a caixa de entrada (e o spam).</p> : <p className="text-destructive">{test.error}</p>)}
+        </div>
+      </div>
+    </>
+  );
+}
