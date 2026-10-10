@@ -5,6 +5,7 @@ import { withPlatform, withTenant } from '@pediu/db';
 import { hashPassword, hashToken, verifyPassword } from '@pediu/shared';
 import type { Ctx } from './context.js';
 import { loginCodeEmail } from './customerEmail.js';
+import { mailReady } from './mailer.js';
 import { audit, fail, parse } from './http.js';
 import { guard } from './session.js';
 import { resolveStore, staffGuard, type StoreRef } from './staff.js';
@@ -23,6 +24,8 @@ let dummyHash: Promise<string> | null = null;   // conta inexistente leva o mesm
 export interface CustomerSession { sessionId: string; id: string; email: string; name: string; phone: string; via: 'code' | 'password'; hasPassword: boolean }
 
 const email = z.string().trim().toLowerCase().email().max(160);
+/** Tokens de acompanhamento dos pedidos feitos neste navegador (para vincular à conta). */
+const linkTokens = z.array(z.string().min(10).max(80)).max(30).default([]);
 const code = z.string().regex(/^\d{6}$/, 'O código tem 6 dígitos.');
 const pub = (c: { id: string; email: string; name: string; phone: string }) => ({ id: c.id, email: c.email, name: c.name, phone: c.phone });
 const codeHash = (storeId: string, mail: string, c: string) => hashToken(`${storeId}:${mail}:${c}`);
@@ -72,9 +75,21 @@ export function customerRoutes(app: FastifyInstance, ctx: Ctx) {
     reply.setCookie(CUSTOMER_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: ctx.cookieSecure, path: '/', maxAge: SESSION_TTL_MS / 1000 });
   };
 
+  /**
+   * Vincula pedidos feitos sem conta à conta do cliente. Só por provas de posse:
+   *  - tokens de acompanhamento que o navegador guardou (quem tem o token fez o pedido);
+   *  - o e-mail do pedido, mas só quando o e-mail da conta foi verificado (código recebido). Cadastrar com a senha não prova o e-mail.
+   */
+  const linkOrders = async (q: Parameters<Parameters<typeof withTenant>[2]>[0], store: StoreRef, customerId: string, mail: string, emailVerified: boolean, tokens: string[]) => {
+    let n = 0;
+    if (tokens.length) n += (await q`update orders set customer_id = ${customerId}, customer_email = coalesce(customer_email, ${mail}) where store_id = ${store.storeId} and customer_id is null and tracking_token = any(${tokens}) returning id`).length;
+    if (emailVerified) n += (await q`update orders set customer_id = ${customerId} where store_id = ${store.storeId} and customer_id is null and customer_email = ${mail} returning id`).length;
+    return n;
+  };
+
   // criar conta com e-mail e senha
   app.post(`${C}/register`, { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
-    const b = parse(z.object({ name: z.string().trim().min(2, 'Informe seu nome.').max(80), email, phone: z.string().trim().max(20).default(''), password }), req.body, reply); if (!b) return;
+    const b = parse(z.object({ name: z.string().trim().min(2, 'Informe seu nome.').max(80), email, phone: z.string().trim().max(20).default(''), password, orderTokens: linkTokens }), req.body, reply); if (!b) return;
     const store = await publicStore(ctx, slugOf(req));
     if (!store) return fail(reply, 404, 'not_found', 'Loja não encontrada.');
     const hash = await hashPassword(b.password);
@@ -86,6 +101,7 @@ export function customerRoutes(app: FastifyInstance, ctx: Ctx) {
       const [c] = await q`insert into store_customers (store_id, tenant_id, email, name, phone, password_hash, last_login_at)
                           values (${store.storeId}, ${store.tenantId}, ${b.email}, ${b.name}, ${b.phone}, ${hash}, ${now.toISOString()}::timestamptz) returning id, email, name, phone`;
       await openSession(q, req, reply, store, c!.id as string, 'password');
+      await linkOrders(q, store, c!.id as string, b.email, false, b.orderTokens);
       return c!;
     });
     if (out === 'exists') return fail(reply, 409, 'email_taken', 'Este e-mail já tem conta. Entre com sua senha.');
@@ -95,12 +111,12 @@ export function customerRoutes(app: FastifyInstance, ctx: Ctx) {
 
   // entrar com e-mail e senha (mensagem única para conta inexistente e senha errada; bloqueio após 5 erros)
   app.post(`${C}/login`, { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
-    const b = parse(z.object({ email, password: z.string().min(1).max(200) }), req.body, reply); if (!b) return;
+    const b = parse(z.object({ email, password: z.string().min(1).max(200), orderTokens: linkTokens }), req.body, reply); if (!b) return;
     const store = await publicStore(ctx, slugOf(req));
     if (!store) return fail(reply, 404, 'not_found', 'Loja não encontrada.');
     const now = ctx.clock.now();
     const out = await withTenant(ctx.pools, store.tenantId, async (q) => {
-      const [c] = await q`select id, email, name, phone, password_hash, locked_until from store_customers where store_id = ${store.storeId} and email = ${b.email} for update`;
+      const [c] = await q`select id, email, name, phone, password_hash, locked_until, email_verified_at from store_customers where store_id = ${store.storeId} and email = ${b.email} for update`;
       if (!c || !c.password_hash) { await verifyPassword(b.password, await (dummyHash ??= hashPassword('dummy-password'))); return 'invalid' as const; }
       if (c.locked_until && new Date(c.locked_until) > now) return 'locked' as const;
       if (!(await verifyPassword(b.password, c.password_hash))) {
@@ -112,6 +128,7 @@ export function customerRoutes(app: FastifyInstance, ctx: Ctx) {
       }
       await q`update store_customers set failed_attempts = 0, locked_until = null, last_login_at = ${now.toISOString()}::timestamptz where id = ${c.id}`;
       await openSession(q, req, reply, store, c.id as string, 'password');
+      await linkOrders(q, store, c.id as string, b.email, !!c.email_verified_at, b.orderTokens);
       return c;
     });
     if (out === 'locked') return fail(reply, 423, 'locked', `Muitas tentativas. Tente de novo em ${LOCK_MIN} minutos ou use "Esqueci minha senha".`);
@@ -143,7 +160,7 @@ export function customerRoutes(app: FastifyInstance, ctx: Ctx) {
     const b = parse(z.object({ email, name: z.string().trim().max(80).default(''), phone: z.string().trim().max(20).default('') }), req.body, reply); if (!b) return;
     const store = await publicStore(ctx, slugOf(req));
     if (!store) return fail(reply, 404, 'not_found', 'Loja não encontrada.');
-    if (!ctx.mailer) return fail(reply, 503, 'mail_unavailable', 'O envio de e-mail não está configurado nesta plataforma.');
+    if (!(await mailReady(ctx.mailer))) return fail(reply, 503, 'mail_unavailable', 'O envio de e-mail não está configurado nesta plataforma.');
     const plain = String(randomInt(0, 1_000_000)).padStart(6, '0');
     const now = ctx.clock.now();
     const out = await withTenant(ctx.pools, store.tenantId, async (q) => {
@@ -161,7 +178,7 @@ export function customerRoutes(app: FastifyInstance, ctx: Ctx) {
       storeName: store.name, storeUrl: origin ? `${origin}/` : '', logoUrl: out.theme.logoUrl?.startsWith('/') && origin ? `${origin}${out.theme.logoUrl}` : out.theme.logoUrl, primary: out.theme.primary, primaryFg: out.theme.primaryFg,
       code: plain, minutes: CODE_TTL_MIN, landingUrl: out.landing, poweredByLogoUrl: origin ? `${origin}/brand/logo-allblack.png` : '',
     });
-    try { await ctx.mailer.send({ to: b.email, ...mail }); }
+    try { await ctx.mailer!.send({ to: b.email, ...mail }); }
     catch (e) {
       ctx.telemetry?.log({ level: 'error', service: 'api', event: 'customer.mail_failed', message: String((e as Error).message).slice(0, 300), storeId: store.storeId, tenantId: store.tenantId });
       return fail(reply, 502, 'mail_failed', 'Não foi possível enviar o e-mail agora. Tente novamente em instantes.');
@@ -171,7 +188,7 @@ export function customerRoutes(app: FastifyInstance, ctx: Ctx) {
 
   // 2) confirma o código, cria/atualiza o cliente e abre a sessão
   app.post(`${C}/verify`, { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
-    const b = parse(z.object({ email, code }), req.body, reply); if (!b) return;
+    const b = parse(z.object({ email, code, orderTokens: linkTokens }), req.body, reply); if (!b) return;
     const store = await publicStore(ctx, slugOf(req));
     if (!store) return fail(reply, 404, 'not_found', 'Loja não encontrada.');
     const now = ctx.clock.now();
@@ -192,6 +209,7 @@ export function customerRoutes(app: FastifyInstance, ctx: Ctx) {
           phone = case when store_customers.phone = '' then excluded.phone else store_customers.phone end
         returning id, email, name, phone`;
       await openSession(q, req, reply, store, cu!.id as string, 'code');
+      await linkOrders(q, store, cu!.id as string, b.email, true, b.orderTokens);   // código recebido = e-mail provado
       return cu!;
     });
     if (!out) return fail(reply, 401, 'invalid_code', 'Código inválido ou vencido. Peça um novo código.');
@@ -222,6 +240,88 @@ export function customerRoutes(app: FastifyInstance, ctx: Ctx) {
     if (store && c) await withTenant(ctx.pools, store.tenantId, (q) => q`update customer_sessions set revoked_at = now() where id = ${c.sessionId}`);
     reply.clearCookie(CUSTOMER_COOKIE, { path: '/' });
     return { ok: true };
+  });
+
+  // o e-mail já tem conta? O checkout usa para pedir a senha (conta existente) ou criar uma (novo). Responde só o necessário.
+  app.post(`${C}/exists`, { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const b = parse(z.object({ email }), req.body, reply); if (!b) return;
+    const store = await publicStore(ctx, slugOf(req));
+    if (!store) return fail(reply, 404, 'not_found', 'Loja não encontrada.');
+    const [c] = await withTenant(ctx.pools, store.tenantId, (q) => q`select password_hash is not null as has_password from store_customers where store_id = ${store.storeId} and email = ${b.email}`);
+    return { exists: !!c, hasPassword: !!c?.has_password };
+  });
+
+  // cliente logado traz pedidos antigos deste navegador para a conta (pelos tokens de acompanhamento)
+  app.post(`${C}/link-orders`, { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const b = parse(z.object({ orderTokens: linkTokens }), req.body, reply); if (!b) return;
+    const store = await publicStore(ctx, slugOf(req));
+    if (!store) return fail(reply, 404, 'not_found', 'Loja não encontrada.');
+    const c = await loadCustomer(ctx, req, store);
+    if (!c) return fail(reply, 401, 'unauthenticated', 'Entre para continuar.');
+    const linked = await withTenant(ctx.pools, store.tenantId, (q) => linkOrders(q, store, c.id, c.email, false, b.orderTokens));
+    return { linked };
+  });
+
+  // ---- endereços salvos ----
+  const addr = z.object({
+    label: z.string().trim().max(40).default(''), cep: z.string().regex(/^\d{0,8}$/, 'CEP só com números.').default(''),
+    street: z.string().trim().min(2, 'Informe a rua.').max(120), number: z.string().trim().max(20).default(''), complement: z.string().trim().max(80).default(''),
+    district: z.string().trim().max(80).default(''), city: z.string().trim().max(80).default(''), uf: z.string().trim().toUpperCase().max(2).default(''),
+    zoneId: z.string().uuid().nullable().optional(), isDefault: z.boolean().default(false),
+  });
+  const addrOut = (r: Record<string, any>) => ({ id: r.id, label: r.label, cep: r.cep, street: r.street, number: r.number, complement: r.complement, district: r.district, city: r.city, uf: r.uf, zoneId: r.zone_id, isDefault: r.is_default });
+  const asCustomer = async (req: FastifyRequest, reply: import('fastify').FastifyReply) => {
+    const store = await publicStore(ctx, slugOf(req));
+    if (!store) { fail(reply, 404, 'not_found', 'Loja não encontrada.'); return null; }
+    const c = await loadCustomer(ctx, req, store);
+    if (!c) { fail(reply, 401, 'unauthenticated', 'Entre para continuar.'); return null; }
+    return { store, c };
+  };
+
+  app.get(`${C}/addresses`, async (req, reply) => {
+    const x = await asCustomer(req, reply); if (!x) return;
+    const rows = await withTenant(ctx.pools, x.store.tenantId, (q) => q`select * from customer_addresses where customer_id = ${x.c.id} and store_id = ${x.store.storeId} order by is_default desc, created_at`);
+    return { addresses: rows.map(addrOut) };
+  });
+
+  app.post(`${C}/addresses`, { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const b = parse(addr, req.body, reply); if (!b) return;
+    const x = await asCustomer(req, reply); if (!x) return;
+    const out = await withTenant(ctx.pools, x.store.tenantId, async (q) => {
+      const [n] = await q`select count(*)::int as n from customer_addresses where customer_id = ${x.c.id}`;
+      if ((n?.n ?? 0) >= 10) return 'limit' as const;
+      const makeDefault = b.isDefault || (n?.n ?? 0) === 0;   // o primeiro endereço já nasce como padrão
+      if (makeDefault) await q`update customer_addresses set is_default = false where customer_id = ${x.c.id} and is_default`;
+      const [r] = await q`insert into customer_addresses (store_id, tenant_id, customer_id, label, cep, street, number, complement, district, city, uf, zone_id, is_default)
+                          values (${x.store.storeId}, ${x.store.tenantId}, ${x.c.id}, ${b.label}, ${b.cep}, ${b.street}, ${b.number}, ${b.complement}, ${b.district}, ${b.city}, ${b.uf}, ${b.zoneId ?? null}, ${makeDefault}) returning *`;
+      return r!;
+    });
+    return out === 'limit' ? fail(reply, 422, 'limit', 'Você já tem 10 endereços salvos. Exclua algum para adicionar outro.') : reply.status(201).send({ address: addrOut(out) });
+  });
+
+  app.put(`${C}/addresses/:id`, async (req, reply) => {
+    const id = parse(z.string().uuid(), (req.params as { id: string }).id, reply); if (!id) return;
+    const b = parse(addr, req.body, reply); if (!b) return;
+    const x = await asCustomer(req, reply); if (!x) return;
+    const r = await withTenant(ctx.pools, x.store.tenantId, async (q) => {
+      if (b.isDefault) await q`update customer_addresses set is_default = false where customer_id = ${x.c.id} and is_default and id <> ${id}`;
+      const [u] = await q`update customer_addresses set label = ${b.label}, cep = ${b.cep}, street = ${b.street}, number = ${b.number}, complement = ${b.complement}, district = ${b.district}, city = ${b.city}, uf = ${b.uf},
+                          zone_id = ${b.zoneId ?? null}, is_default = ${b.isDefault} where id = ${id} and customer_id = ${x.c.id} returning *`;
+      return u;
+    });
+    return r ? { address: addrOut(r) } : fail(reply, 404, 'not_found', 'Endereço não encontrado.');
+  });
+
+  app.delete(`${C}/addresses/:id`, async (req, reply) => {
+    const id = parse(z.string().uuid(), (req.params as { id: string }).id, reply); if (!id) return;
+    const x = await asCustomer(req, reply); if (!x) return;
+    const r = await withTenant(ctx.pools, x.store.tenantId, async (q) => {
+      const [d] = await q`delete from customer_addresses where id = ${id} and customer_id = ${x.c.id} returning is_default`;
+      // apagou o padrão: o mais antigo que sobrou assume
+      if (d?.is_default) await q`update customer_addresses set is_default = true where id = (select id from customer_addresses where customer_id = ${x.c.id} order by created_at limit 1)`;
+      return d;
+    });
+    return r ? { ok: true } : fail(reply, 404, 'not_found', 'Endereço não encontrado.');
   });
 
   // pedidos do cliente (mesmo formato do acompanhamento por token, mais o token para atualizar o status)

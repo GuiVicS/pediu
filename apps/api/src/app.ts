@@ -4,6 +4,7 @@ import rateLimit from '@fastify/rate-limit';
 import { alertRoutes, logRoutes } from './alerts.js';
 import { analyticsRoutes, staffDashboardRoutes } from './analytics.js';
 import { aiSettingsRoutes } from './aiConfig.js';
+import { mailSettingsRoutes } from './mailConfig.js';
 import { authRoutes } from './auth.js';
 import { bannerRoutes } from './banners.js';
 import { billingRoutes } from './billing.js';
@@ -80,6 +81,7 @@ export function buildApp(ctx: Ctx, opts: { trustProxy?: boolean; logger?: boolea
   orderRoutes(app, ctx);
   customerRoutes(app, ctx);
   aiSettingsRoutes(app, ctx);
+  if (ctx.mail) mailSettingsRoutes(app, ctx, ctx.mail);
   bannerRoutes(app, ctx);
   collectionRoutes(app, ctx);
   realtimeRoutes(app, ctx);
