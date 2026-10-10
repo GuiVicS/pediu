@@ -1,5 +1,7 @@
 # Plano do checkout — loja online PediuLanchou
 
+> **Status: implementado** (branch `fix/relatorio-testes-1`). Rota `/finalizar` (`apps/web/src/store/checkout/`), Resend em **Super admin › E-mail (Resend)**, endpoints `customer/exists`, `customer/link-orders` e `customer/addresses`, migration `20261017000002_checkout.sql`. Decisões tomadas: conta obrigatória no checkout; CPF só quando o gateway exige (Sicoob); retirada também pede identificação; sem SMTP/Resend o "esqueci a senha" mostra o erro do servidor. O que sobrou: ver "Pendências" no fim.
+
 Base: 4 telas de referência do checkout da Yampi (desktop em 3 colunas; mobile em 3 telas separadas). Cobre os itens 1.1 a 1.4, 2.1, 2.2 e 2.3 do relatório de testes.
 
 ## 1. Como está hoje (`apps/web/src/store/CheckoutModal.tsx`)
@@ -92,6 +94,7 @@ Estimativa: passos 1–3 são curtos; 4–7 são o grosso e podem ser entregues 
 
 ## 7. Pendências e decisões
 
+0. **Aplicar a migration no banco de produção** (`20261017000001_domains_write.sql` e `20261017000002_checkout.sql`) **antes** de publicar a versão nova do web.
 1. **Pedido 1005 (pizzaria-do-gaucho):** o e-mail de teste na nota está `gv671930gmail.com` (sem `@`). Se foi assim que foi digitado, o pedido nunca teve e-mail válido. Dá para vincular **manualmente** uma vez (script/SQL por número do pedido) como correção pontual.
 2. **Visitante:** manter obrigatório criar conta (como pediu) ou permitir "continuar sem conta" com e-mail? O plano segue obrigatório.
 3. **Retirada na loja:** pedir senha também? Plano: sim, é a mesma identificação.

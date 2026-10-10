@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Outlet, NavLink, useSearchParams } from 'react-router-dom';
+import { Outlet, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ClipboardList, Home, Info, ShoppingBag, User, X } from 'lucide-react';
 import { THEME_DEFAULTS, STORE_DEFAULTS, type Store, type Theme } from '@/lib/types';
 import { get } from '@/lib/api';
@@ -12,7 +12,6 @@ import { brl } from '@/lib/format';
 import DraftLoader from './DraftLoader';
 import { StoreContext, normalizeMenu, useStore as useStoreCtx, type Menu } from './StoreContext';
 import { CartPanel } from './CartPanel';
-import { CheckoutModal } from './CheckoutModal';
 import { Img } from './Img';
 import { cx } from '@/ui/kit';
 
@@ -25,6 +24,7 @@ export default function StoreLayout() {
   const [error, setError] = useState<string | null>(null);
   const [params] = useSearchParams();
   const preview = params.get('preview') === '1';
+  const bare = useLocation().pathname === '/finalizar';   // checkout tem cabeçalho e rodapé próprios
 
   const load = useCallback(async () => {
     try {
@@ -59,11 +59,11 @@ export default function StoreLayout() {
           {preview && <div className="bg-amber-500/90 px-3 py-1 text-center text-[11px] font-semibold text-black">Pré-visualização</div>}
           {value.unpublished && <div role="status" className="sticky top-0 z-[80] bg-amber-500 px-3 py-1.5 text-center text-xs font-bold uppercase tracking-wide text-black">Modo desenvolvimento — loja não publicada. Só a equipe vê esta página; pedidos desativados.</div>}
           <DraftLoader />
-          <Header />
-          <main className="pb-24 md:pb-10"><Outlet /></main>
-          <Footer />
-          <BottomNav />
-          <CartDrawer />
+          {!bare && <Header />}
+          {bare ? <Outlet /> : <main className="pb-24 md:pb-10"><Outlet /></main>}
+          {!bare && <Footer />}
+          {!bare && <BottomNav />}
+          {!bare && <CartDrawer />}
         </div>
       </CartProvider>
       </CustomerProvider>
@@ -98,7 +98,7 @@ function Header() {
   );
 }
 
-function Footer() {
+export function Footer() {
   const { theme, store, landingUrl } = useStoreCtx();
   // só http(s): o link vem de configuração; qualquer outro esquema cai no site padrão
   const lp = /^https?:\/\//i.test(landingUrl) ? landingUrl : 'https://pediulanchou.com.br';
@@ -140,9 +140,9 @@ function BottomNav() {
 function CartDrawer() {
   const cart = useCart();
   const { theme } = useStoreCtx();
-  const [checkout, setCheckout] = useState(false);
+  const nav = useNavigate();
   useEffect(() => {
-    const on = () => { cart.setOpen(false); setCheckout(true); };
+    const on = () => { cart.setOpen(false); nav('/finalizar'); };
     window.addEventListener('open-checkout', on);
     return () => window.removeEventListener('open-checkout', on);
   });
@@ -157,7 +157,6 @@ function CartDrawer() {
           <div className="flex-1 overflow-y-auto p-4"><CartPanel flat emptyText={theme.emptyCartMessage} /></div>
         </div>
       )}
-      <CheckoutModal open={checkout} onClose={() => setCheckout(false)} />
     </>
   );
 }
