@@ -232,6 +232,7 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
     return withTenant(ctx.pools, s.tenantId, async (q) => {
       const rows = await q`select id, number, channel, type, status, customer_name, customer_phone, address, table_number, note, subtotal_cents, fee_cents, discount_cents, total_cents,
           payment_method, change_for_cents, paid, paid_at, paid_type, payment_mode, cash_received_cents, change_cents, payment_ref, courier_id, guests, bill_requested_at, created_at, accepted_at, ready_at, dispatched_at, delivered_at, cancelled_at, cancel_reason,
+          orders.route_id, orders.route_stop,
           (select u.name from staff_users u where u.id = orders.created_by) as opened_by_name,
           (select coalesce(jsonb_agg(t.n order by t.n), '[]'::jsonb) from (select distinct u.name as n from order_events e join staff_users u on u.id::text = e.actor_id where e.order_id = orders.id and e.actor_kind = 'staff') t) as staff_names
         from orders where store_id = ${s.storeId}

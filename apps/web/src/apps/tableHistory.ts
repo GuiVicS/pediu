@@ -14,6 +14,7 @@ export function describeEvent(e: TableEvent, f: Fmt): { who: string; text: strin
     case e.event === 'bill_requested': return { who: name, text: 'pediu a conta' };
     case e.event === 'bill_cancelled': return { who: name, text: 'cancelou o pedido de conta' };
     case e.event === 'paid': return { who: name, text: `recebeu ${f.money(Number(d.totalCents ?? 0))}${d.method ? ` (${d.method})` : ''}` };
+    case e.event === 'status:saiu' && !!d.route: return { who: name, text: `saiu para entrega (parada ${d.route.stop} de ${d.route.of} da rota)` };
     case e.event.startsWith('status:'): { const to = e.event.slice(7); return { who: name, text: to === 'cancelado' ? `cancelou o pedido${d.reason ? `: ${d.reason}` : ''}` : `marcou como "${f.status(to)}"` }; }
     default: return { who: name, text: e.event };
   }

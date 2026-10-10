@@ -10,3 +10,4 @@ export * from './features.js';
 export * from './whatsapp.js';
 export * from './images.js';
 export * from './apps.js';
+export * from './route-plan.js';

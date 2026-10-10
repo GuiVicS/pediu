@@ -15,6 +15,7 @@ test('frases do histórico da mesa', () => {
   assert.equal(describeEvent(ev('bill_cancelled', {}), f).text, 'cancelou o pedido de conta');
   assert.equal(describeEvent(ev('paid', { totalCents: 15990, method: 'Pix' }), f).text, 'recebeu R$ 159,90 (Pix)');
   assert.equal(describeEvent(ev('status:preparo', { from: 'novo' }), f).text, 'marcou como "Em preparo"');
+  assert.equal(describeEvent(ev('status:saiu', { from: 'pronto', route: { id: 'r', stop: 2, of: 4 } }), f).text, 'saiu para entrega (parada 2 de 4 da rota)');
   assert.equal(describeEvent(ev('status:cancelado', { reason: 'cliente saiu' }), f).text, 'cancelou o pedido: cliente saiu');
 });
 
