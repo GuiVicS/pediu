@@ -57,9 +57,9 @@ export const STORE_MCP_TOOLS = [
   { name: 'excluir_cliente', description: 'Exclui DE VEZ um contato de cliente (informe o id de listar_clientes). Apaga também os endereços salvos e a conta dele na loja; os pedidos já feitos continuam no histórico, sem o vínculo. Não tem como desfazer: confirme com o lojista antes.',
     inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'id do cliente (de listar_clientes)' } }, required: ['id'], additionalProperties: false } },
   // ---- PAGAMENTOS (escopo 'payments', opcional). Só cobra: não estorna nem marca pedido como pago ----
-  { name: 'gerar_pix', description: 'Gera a cobrança Pix de um pedido ainda não pago e devolve o código "copia e cola" para enviar ao cliente, com o valor e a validade (15 minutos). A loja precisa ter Mercado Pago ou Sicoob conectado. Quando o cliente paga, o pedido é marcado como pago sozinho. Se já houver um Pix válido para o pedido, devolve o mesmo.',
+  { name: 'gerar_pix', description: 'Gera a cobrança Pix de um pedido ainda não pago e devolve o código "copia e cola" para enviar ao cliente, com o valor e a validade (15 minutos). A loja precisa ter Mercado Pago ou Sicoob conectado. Quando o cliente paga, o pedido é marcado como pago sozinho. Se já houver um Pix válido para o pedido, devolve o mesmo. Se o pedido for cancelado, o Pix deixa de valer.',
     inputSchema: { type: 'object', properties: { numero: { type: 'integer', description: 'número do pedido' } }, required: ['numero'], additionalProperties: false } },
-  { name: 'link_pagamento', description: 'Devolve um link para enviar ao cliente: ele abre a página da loja com o QR Code e o Pix "copia e cola" do pedido e vê a confirmação na hora. O link vale enquanto o Pix estiver válido (15 minutos); depois disso, gere outro.',
+  { name: 'link_pagamento', description: 'Devolve um link para enviar ao cliente pagar o pedido com CARTÃO online: ele abre a página da loja, digita o cartão (Mercado Pago) e vê a confirmação na hora; o pedido é marcado como pago sozinho. Vale 60 minutos; depois gere outro. Se já houver um Pix válido do pedido (gerar_pix), a página mostra o Pix também. Se a loja não tiver cartão online conectado, o link abre só o Pix (15 minutos).',
     inputSchema: { type: 'object', properties: { numero: { type: 'integer', description: 'número do pedido' } }, required: ['numero'], additionalProperties: false } },
 ] as const;
 
@@ -273,46 +273,88 @@ async function callTool(ctx: Ctx, c: Caller, name: string, raw: unknown): Promis
         return ok({ ok: true, mensagem: `Cliente "${r.name}" excluído. Os pedidos dele continuam no histórico da loja.` });
       });
     }
-    case 'gerar_pix': case 'link_pagamento': {
+    case 'gerar_pix': {
       const a = args.numero.parse(raw ?? {});
-      const r = await pixForOrder(ctx, c, a.numero, name === 'link_pagamento');
+      const r = await pixForOrder(ctx, c, a.numero);
       if ('error' in r) return bad(r.error);
       await withTenant(ctx.pools, c.tenantId, log(r.reused ? 'store_mcp.pix_reused' : 'store_mcp.pix_created', { number: a.numero, paymentId: r.paymentId, tool: name }));
-      if (name === 'link_pagamento') return r.link ? ok({ ok: true, numero: a.numero, valor: money(r.amountCents), link: r.link, expira_em: r.expiresAt, mensagem: `Envie o link ao cliente: ele abre o Pix do pedido #${a.numero} e vê a confirmação na hora. Vale até o Pix expirar; depois gere outro.` }) : bad(NO_LINK);
-      return ok({ ok: true, numero: a.numero, valor: money(r.amountCents), pix_copia_e_cola: r.qrCode, expira_em: r.expiresAt, link_pagamento: r.link, mensagem: `Pix do pedido #${a.numero} gerado (${money(r.amountCents)}). Envie o código copia e cola ao cliente; quando ele pagar, o pedido é marcado como pago sozinho.` });
+      return ok({ ok: true, numero: a.numero, valor: money(r.amountCents), pix_copia_e_cola: r.qrCode, expira_em: r.expiresAt, mensagem: `Pix do pedido #${a.numero} gerado (${money(r.amountCents)}). Envie o código copia e cola ao cliente; quando ele pagar, o pedido é marcado como pago sozinho. Para pagar com cartão, use link_pagamento.` });
+    }
+    case 'link_pagamento': {
+      const a = args.numero.parse(raw ?? {});
+      const r = await payLinkForOrder(ctx, c, a.numero);
+      if ('error' in r) return bad(r.error);
+      await withTenant(ctx.pools, c.tenantId, log(r.reused ? 'store_mcp.pay_link_reused' : 'store_mcp.pay_link_created', { number: a.numero, paymentId: r.paymentId, methods: r.methods, tool: name }));
+      return ok({ ok: true, numero: a.numero, valor: money(r.amountCents), link: r.link, formas_de_pagamento: r.methods, expira_em: r.expiresAt,
+        mensagem: r.methods.includes('cartão') ? `Envie o link ao cliente: ele abre a página da loja e paga o pedido #${a.numero} com cartão${r.methods.includes('pix') ? ' ou Pix' : ''}. O pedido é marcado como pago sozinho.`
+          : `Envie o link ao cliente: ele abre o Pix do pedido #${a.numero}. A loja não tem cartão online conectado (Painel › Integrações › Mercado Pago, com a chave pública), então o link só oferece Pix.` });
     }
     default: return bad(`Ferramenta desconhecida: ${name}`);
   }
 }
 
 const NO_LINK = 'A loja ainda não tem um endereço verificado para montar o link. Use gerar_pix e envie o código copia e cola.';
-type PixOut = { paymentId: string; qrCode: string; expiresAt: string; amountCents: number; link?: string; reused: boolean } | { error: string };
-/** Pix de um pedido ainda não pago: reaproveita a cobrança pendente que ainda vale (não gera duas) ou cria outra no gateway conectado da loja. */
-async function pixForOrder(ctx: Ctx, c: Caller, numero: number, needLink = false): Promise<PixOut> {
-  const now = ctx.clock.now().getTime();
+type Charge = { o: Record<string, any>; pend: Record<string, any>[]; pixGateway: 'mercadopago' | 'sicoob' | null; cardReady: boolean; link?: string };
+/** Pedido que ainda pode ser cobrado, com as cobranças abertas, os gateways prontos e o endereço da página de pagamento. */
+async function chargeable(ctx: Ctx, c: Caller, numero: number): Promise<Charge | { error: string }> {
   const ref = await withTenant(ctx.pools, c.tenantId, async (q) => {
     const [o] = await q`select o.id, o.number, o.status, o.paid, o.total_cents, o.customer_name, o.tracking_token, s.slug from orders o join stores s on s.id = o.store_id where o.store_id = ${c.storeId} and o.number = ${numero}`;
     if (!o) return null;
-    const pend = await q`select id, qr_code, expires_at, amount_cents from order_payments where order_id = ${o.id} and store_id = ${c.storeId} and method = 'pix' and status = 'pendente' and qr_code is not null order by created_at desc limit 5`;
-    const gateway = (await gatewayReady(q, c.storeId, 'mercadopago')) ? 'mercadopago' as const : (await gatewayReady(q, c.storeId, 'sicoob')) ? 'sicoob' as const : null;
-    const [d] = await q`select hostname from store_domains where store_id = ${c.storeId} and verified_at is not null order by (kind = 'custom') desc, created_at limit 1`;
-    return { o, pend, gateway, host: d?.hostname as string | undefined };
+    const pend = await q`select id, method, qr_code, expires_at, amount_cents from order_payments where order_id = ${o.id} and store_id = ${c.storeId} and status = 'pendente' order by created_at desc limit 10`;
+    const pixGateway = (await gatewayReady(q, c.storeId, 'mercadopago')) ? 'mercadopago' as const : (await gatewayReady(q, c.storeId, 'sicoob')) ? 'sicoob' as const : null;
+    const cardReady = await gatewayReady(q, c.storeId, 'mercadopago', 'card');
+    const doms = await q`select hostname, kind from store_domains where store_id = ${c.storeId} and verified_at is not null order by created_at`;
+    // endereço que o cliente consegue abrir: domínio próprio da loja; senão o domínio pelo qual as lojas abrem hoje (PREVIEW_DOMAIN); senão o subdomínio oficial
+    const custom = doms.find((x) => x.kind === 'custom')?.hostname as string | undefined; const preview = process.env.PREVIEW_DOMAIN;
+    const host = custom ?? (preview ? `${o.slug}.${preview}` : (doms[0]?.hostname as string | undefined));
+    return { o, pend: [...pend], pixGateway, cardReady, link: host ? `https://${host}/pagar/${o.tracking_token}` : undefined };
   });
   if (!ref) return { error: `Pedido #${numero} não encontrado nesta loja.` };
-  const { o } = ref;
-  if (o.paid) return { error: `O pedido #${numero} já está pago.` };
-  if (o.status === 'cancelado') return { error: `O pedido #${numero} está cancelado.` };
-  if (!(Number(o.total_cents) > 0)) return { error: `O pedido #${numero} não tem valor a cobrar.` };
-  if (needLink && !ref.host) return { error: NO_LINK };                                           // sem endereço não há link: não cria cobrança à toa
-  const link = ref.host ? `https://${ref.host}/pagar/${o.tracking_token}` : undefined;
-  const live = ref.pend.find((p) => Number(p.amount_cents) === Number(o.total_cents) && new Date(p.expires_at).getTime() > now + 120_000);
-  if (live) return { paymentId: live.id as string, qrCode: live.qr_code as string, expiresAt: new Date(live.expires_at).toISOString(), amountCents: Number(o.total_cents), link, reused: true };
-  if (!ref.gateway) return { error: 'A loja não tem Pix online conectado. O lojista conecta o Mercado Pago ou o Sicoob em Painel › Integrações.' };
+  if (ref.o.paid) return { error: `O pedido #${numero} já está pago.` };
+  if (ref.o.status === 'cancelado') return { error: `O pedido #${numero} está cancelado.` };
+  if (!(Number(ref.o.total_cents) > 0)) return { error: `O pedido #${numero} não tem valor a cobrar.` };
+  return ref;
+}
+/** Cobrança aberta que ainda vale por pelo menos `marginMs` e bate com o total atual do pedido. */
+const livePayment = (ctx: Ctx, r: Charge, method: 'pix' | 'card', marginMs: number) =>
+  r.pend.find((p) => p.method === method && (method === 'card' || p.qr_code) && Number(p.amount_cents) === Number(r.o.total_cents) && new Date(p.expires_at).getTime() > ctx.clock.now().getTime() + marginMs);
+const startFor = (ctx: Ctx, c: Caller, r: Charge, method: 'pix' | 'card', gateway: 'mercadopago' | 'sicoob') =>
+  startOnlinePayment(ctx, { tenantId: c.tenantId, storeId: c.storeId, orderId: r.o.id as string, orderNumber: r.o.number as number, amountCents: Number(r.o.total_cents), slug: r.o.slug as string, method, gateway, customer: { name: (r.o.customer_name as string) || 'Cliente' } });
+
+type PixOut = { paymentId: string; qrCode: string; expiresAt: string; amountCents: number; reused: boolean } | { error: string };
+/** Pix de um pedido ainda não pago: reaproveita a cobrança pendente que ainda vale (não gera duas) ou cria outra no gateway conectado da loja. */
+async function pixForOrder(ctx: Ctx, c: Caller, numero: number, known?: Charge): Promise<PixOut> {
+  const r = known ?? await chargeable(ctx, c, numero);
+  if ('error' in r) return r;
+  const amountCents = Number(r.o.total_cents);
+  const live = livePayment(ctx, r, 'pix', 120_000);
+  if (live) return { paymentId: live.id as string, qrCode: live.qr_code as string, expiresAt: new Date(live.expires_at).toISOString(), amountCents, reused: true };
+  if (!r.pixGateway) return { error: 'A loja não tem Pix online conectado. O lojista conecta o Mercado Pago ou o Sicoob em Painel › Integrações.' };
   try {
-    const p = await startOnlinePayment(ctx, { tenantId: c.tenantId, storeId: c.storeId, orderId: o.id as string, orderNumber: o.number as number, amountCents: Number(o.total_cents), slug: o.slug as string, method: 'pix', gateway: ref.gateway, customer: { name: (o.customer_name as string) || 'Cliente' } });
+    const p = await startFor(ctx, c, r, 'pix', r.pixGateway);
     if (!p.qrCode) return { error: 'O gateway não devolveu o código Pix. Tente de novo em instantes.' };
-    return { paymentId: p.id, qrCode: p.qrCode, expiresAt: p.expiresAt, amountCents: Number(o.total_cents), link, reused: false };
+    return { paymentId: p.id, qrCode: p.qrCode, expiresAt: p.expiresAt, amountCents, reused: false };
   } catch (e) { if (e instanceof GatewayError) return { error: `Não foi possível gerar o Pix agora: ${e.message}` }; throw e; }
+}
+
+type LinkOut = { paymentId: string; link: string; methods: string[]; expiresAt: string; amountCents: number; reused: boolean } | { error: string };
+/** Link de pagamento: abre o cartão online (Mercado Pago) na página da loja; se a loja não tiver cartão online, cai no Pix. Um Pix já gerado para o pedido aparece junto. */
+async function payLinkForOrder(ctx: Ctx, c: Caller, numero: number): Promise<LinkOut> {
+  const r = await chargeable(ctx, c, numero);
+  if ('error' in r) return r;
+  if (!r.link) return { error: NO_LINK };                                                              // sem endereço não há link: não cria cobrança à toa
+  const amountCents = Number(r.o.total_cents);
+  if (!r.cardReady) {
+    const pix = await pixForOrder(ctx, c, numero, r);
+    return 'error' in pix ? pix : { paymentId: pix.paymentId, link: r.link, methods: ['pix'], expiresAt: pix.expiresAt, amountCents, reused: pix.reused };
+  }
+  const methods = ['cartão', ...(livePayment(ctx, r, 'pix', 120_000) ? ['pix'] : [])];
+  const live = livePayment(ctx, r, 'card', 5 * 60_000);
+  if (live) return { paymentId: live.id as string, link: r.link, methods, expiresAt: new Date(live.expires_at).toISOString(), amountCents, reused: true };
+  try {
+    const p = await startFor(ctx, c, r, 'card', 'mercadopago');
+    return { paymentId: p.id, link: r.link, methods, expiresAt: p.expiresAt, amountCents, reused: false };
+  } catch (e) { if (e instanceof GatewayError) return { error: `Não foi possível abrir o pagamento por cartão agora: ${e.message}` }; throw e; }
 }
 
 type Rpc = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> };
@@ -328,7 +370,7 @@ async function handleRpc(ctx: Ctx, c: Caller, m: Rpc): Promise<unknown | null> {
       return { jsonrpc: '2.0', id: m.id, result: { protocolVersion: PROTOCOLS.includes(asked) ? asked : PROTOCOLS[1], capabilities: { tools: {} }, serverInfo: { name: 'pediu-pedidos', version: '1.0.0' },
         instructions: 'Você trabalha para UMA loja de delivery. LEITURA: somente o cardápio (listar_colecoes, listar_produtos, consultar_cardapio). ESCRITA: pedidos (criar_pedido, mudar_status, cancelar_pedido). '
           + (c.scopes.includes('customers') ? 'Você NÃO consegue ler nem listar pedidos existentes. CLIENTES: você pode listar, criar, editar e excluir contatos de clientes (listar_clientes, criar_cliente, editar_cliente, excluir_cliente); são dados pessoais: use só para o que o lojista pedir e confirme com ele antes de editar ou excluir. ' : 'Você NÃO consegue ler nem listar pedidos existentes nem dados de clientes. ')
-          + (c.scopes.includes('payments') ? 'PAGAMENTOS: você pode gerar o Pix de um pedido (gerar_pix) e o link de pagamento para enviar ao cliente (link_pagamento); você não estorna nem marca pedido como pago. ' : '')
+          + (c.scopes.includes('payments') ? 'PAGAMENTOS: você pode gerar o Pix de um pedido (gerar_pix, devolve o copia e cola) e o link para o cliente pagar com cartão online (link_pagamento); você não estorna nem marca pedido como pago. ' : '')
           + 'Para criar um pedido é OBRIGATÓRIO informar o nome e o telefone do cliente. Use os nomes exatos do cardápio. Confirme todos os dados com o lojista antes de criar ou cancelar um pedido.' } };
     }
     case 'ping': return { jsonrpc: '2.0', id: m.id, result: {} };

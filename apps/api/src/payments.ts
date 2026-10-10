@@ -69,6 +69,36 @@ export async function startOnlinePayment(ctx: Ctx, p: StartPayment): Promise<Sta
   });
 }
 
+/**
+ * Pedido cancelado: cancela no gateway as cobranças online que ainda não foram pagas, para o cliente não pagar um pedido cancelado.
+ * Só encerra a cobrança aqui depois que o gateway confirmou; se ele falhar, ela continua 'pendente' e a conciliação segue de olho
+ * (um pagamento que chegue depois vira o alerta de estorno, em vez de passar despercebido).
+ */
+export async function cancelPendingPayments(ctx: Ctx, storeId: string, orderId: string): Promise<{ cancelled: number; failed: number }> {
+  const pending = await withPlatform(ctx.pools, (q) => q`select id, provider, method, external_id, txid from order_payments where order_id = ${orderId} and store_id = ${storeId} and status = 'pendente'`);
+  const res = { cancelled: 0, failed: 0 };
+  for (const p of pending) {
+    try {
+      if (p.provider === 'sicoob' && p.txid) {
+        const creds = await withPlatform(ctx.pools, (q) => loadCreds<SicoobCreds>(ctx, q, storeId, 'sicoob'));
+        const api = creds ? sicoobApi(ctx, creds) : null;
+        if (!api?.cancelCob) { res.failed++; continue; }
+        await api.cancelCob(p.txid);
+      } else if (p.provider === 'mercadopago' && p.external_id) {
+        const creds = await withPlatform(ctx.pools, (q) => loadCreds<MpCreds>(ctx, q, storeId, 'mercadopago'));
+        const api = creds ? mpApi(ctx, creds) : null;
+        if (!api?.cancel) { res.failed++; continue; }
+        await api.cancel(p.external_id);
+      }                                                    // sem cobrança criada no gateway (cartão ainda não enviado): só encerra aqui
+      await closePayment(ctx, p.id, 'cancelado'); res.cancelled++;
+    } catch (e) {
+      res.failed++;
+      ctx.telemetry?.log({ level: 'warn', service: 'payments', event: 'payment.cancel_failed', message: `Não foi possível cancelar a cobrança no gateway: ${String((e as Error).message).slice(0, 160)}`, storeId, data: { paymentId: p.id, orderId } });
+    }
+  }
+  return res;
+}
+
 export interface Confirmed { orderId: string; number: number; orderType: string; storeId: string; tenantId: string; wasWaiting: boolean; late: boolean }
 
 /** Dá baixa no pagamento: idempotente (confirmar duas vezes não faz nada) e só aceita se o valor bater com o cobrado. */
@@ -98,6 +128,7 @@ export async function confirmPayment(ctx: Ctx, paymentId: string, paidAmountCent
     ctx.telemetry?.log({ level: 'error', service: 'payments', event: 'payment.late_after_cancel', message: `Pagamento aprovado depois de o pedido #${out.number} ser cancelado: ESTORNAR`, storeId: out.storeId, tenantId: out.tenantId, data: { paymentId, orderId: out.orderId } });
     return out;
   }
+  await cancelPendingPayments(ctx, out.storeId, out.orderId).catch(() => undefined);      // pagou por um meio: as outras cobranças abertas do pedido (ex.: Pix do link) deixam de valer
   await afterOrder(ctx, out, out.wasWaiting
     ? { kind: 'created', id: out.orderId, number: out.number, orderType: out.orderType, status: 'novo', print: ['novo'] }
     : { kind: 'paid', id: out.orderId, number: out.number, orderType: out.orderType, status: out.orderType === 'mesa' ? 'entregue' : 'novo' });
@@ -135,11 +166,12 @@ export type CardResult = { status: 'aprovado' } | { status: 'em_analise' } | { s
  * O valor cobrado é sempre o do servidor (order_payments), nunca o que o navegador mandar.
  */
 export async function payCard(ctx: Ctx, trackingToken: string, card: MpCardInput): Promise<CardResult | 'not_found' | 'not_pending'> {
-  const [p] = await withPlatform(ctx.pools, (q) => q`select p.id, p.store_id, p.amount_cents, p.status, p.expires_at, p.external_id, o.number, o.status as order_status
+  const [p] = await withPlatform(ctx.pools, (q) => q`select p.id, p.store_id, p.amount_cents, p.status, p.expires_at, p.external_id, o.number, o.status as order_status, o.paid
     from orders o join order_payments p on p.order_id = o.id and p.store_id = o.store_id
     where o.tracking_token = ${trackingToken} and p.provider = 'mercadopago' and p.method = 'card' order by p.created_at desc limit 1`);
   if (!p) return 'not_found';
-  if (p.status !== 'pendente' || p.order_status !== 'aguardando' || (p.expires_at && new Date(p.expires_at) < ctx.clock.now())) return 'not_pending';
+  // pedido do site fica 'aguardando' até pagar; pedido lançado pela loja (link de pagamento) já está em andamento: vale enquanto não for pago nem cancelado
+  if (p.status !== 'pendente' || p.order_status === 'cancelado' || p.paid || (p.expires_at && new Date(p.expires_at) < ctx.clock.now())) return 'not_pending';
   const creds = await withPlatform(ctx.pools, (q) => loadCreds<MpCreds>(ctx, q, p.store_id, 'mercadopago'));
   if (!creds) throw new GatewayError('Mercado Pago não configurado nesta loja.', 409);
   // uma chave por tentativa (o mesmo token de cartão reenviado não cobra duas vezes; um cartão novo é outra tentativa)
@@ -294,6 +326,25 @@ export function paymentRoutes(app: FastifyInstance, ctx: Ctx) {
     const token = parse(z.string().regex(/^[0-9a-f]{64}$/), (req.params as { token: string }).token, reply); if (!token) return;
     const [r] = await ctx.pools.app.begin((q) => q`select * from app.payment_by_token(${token})`);
     return r ?? fail(reply, 404, 'not_found', 'Pagamento não encontrado.');
+  });
+
+  // ---- link de pagamento (/pagar/<token>): o que ainda dá para pagar neste pedido — Pix pendente e/ou cartão ----
+  app.get('/v1/track/:token/pay', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const token = parse(z.string().regex(/^[0-9a-f]{64}$/), (req.params as { token: string }).token, reply); if (!token) return;
+    const now = ctx.clock.now().getTime();
+    const out = await withPlatform(ctx.pools, async (q) => {
+      const [o] = await q`select id, store_id, number, status, paid, total_cents from orders where tracking_token = ${token}`;
+      if (!o) return null;
+      const pend = (await q`select method, qr_code, expires_at, amount_cents from order_payments where order_id = ${o.id} and store_id = ${o.store_id} and status = 'pendente' order by created_at desc`)
+        .filter((p) => !p.expires_at || new Date(p.expires_at).getTime() > now);
+      const pix = pend.find((p) => p.method === 'pix' && p.qr_code); const card = pend.find((p) => p.method === 'card');
+      const [g] = card ? await q`select meta->>'publicKey' as public_key from store_gateways where store_id = ${o.store_id} and provider = 'mercadopago' and status = 'ativo'` : [];
+      const open = !o.paid && o.status !== 'cancelado';
+      return { number: o.number as number, totalCents: o.total_cents as number, paid: !!o.paid, cancelled: o.status === 'cancelado',
+        pix: open && pix ? { qrCode: pix.qr_code as string, expiresAt: new Date(pix.expires_at).toISOString(), amountCents: pix.amount_cents as number } : null,
+        card: open && card && g?.public_key ? { publicKey: g.public_key as string, expiresAt: new Date(card.expires_at).toISOString(), amountCents: card.amount_cents as number } : null };
+    });
+    return out ?? fail(reply, 404, 'not_found', 'Pagamento não encontrado.');
   });
 
   // ---- checkout transparente: o navegador envia o token do cartão (Card Payment Brick); autenticado pelo token de acompanhamento ----

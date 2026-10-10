@@ -10,7 +10,7 @@ import { audit, fail, parse } from './http.js';
 import { loadMenu } from './menu.js';
 import { afterOrder } from './orderHooks.js';
 import { syncStatusToIfood } from './ifood.js';
-import { gatewayReady, startOnlinePayment } from './payments.js';
+import { cancelPendingPayments, gatewayReady, startOnlinePayment } from './payments.js';
 import { GatewayError } from './gateways.js';
 import { loadStaff, resolveStore, staffGuard } from './staff.js';
 import { loadCustomer } from './customers.js';
@@ -223,6 +223,7 @@ export async function changeOrderStatus(ctx: Ctx, s: StatusActor, id: string, to
     return { ok: true as const, status: to, number: o.number as number, orderType: o.type as string };
   });
   if (!out.ok) return out;
+  if (to === 'cancelado') await cancelPendingPayments(ctx, s.storeId, id).catch(() => undefined);       // Pix ainda não pago deixa de valer; nunca impede o cancelamento
   const printKind = { preparo: 'preparo', pronto: 'pronto', cancelado: 'cancelado' } as const;
   await afterOrder(ctx, s, { kind: 'status', id, number: out.number, orderType: out.orderType, status: to, print: to in printKind ? [printKind[to as keyof typeof printKind]] : [], cancelReason: reason });
   const warning = await syncStatusToIfood(ctx, { storeId: s.storeId, orderId: id, to, type: out.orderType, cancelReason: reason });

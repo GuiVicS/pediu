@@ -21,6 +21,8 @@ export interface MercadoPagoApi {
   createCardPayment(p: { amountCents: number; description: string; reference: string; card: MpCardInput; notificationUrl?: string; idempotencyKey: string }): Promise<MpPayment>;
   getPayment(id: string): Promise<MpPayment>;
   refund(id: string): Promise<void>;
+  /** Cancela uma cobrança ainda não paga (Pix pendente): depois disso o código não pode mais ser pago. */
+  cancel?(id: string): Promise<void>;
 }
 
 const mpMap = (p: any): MpPayment => ({
@@ -56,6 +58,7 @@ export function mercadoPago(c: MpCreds, f: typeof fetch = fetch): MercadoPagoApi
     },
     async getPayment(id) { return mpMap(await call('GET', `/v1/payments/${encodeURIComponent(id)}`)); },
     async refund(id) { await call('POST', `/v1/payments/${encodeURIComponent(id)}/refunds`, {}, { 'x-idempotency-key': `refund-${id}` }); },
+    async cancel(id) { await call('PUT', `/v1/payments/${encodeURIComponent(id)}`, { status: 'cancelled' }); },
   };
 }
 
@@ -79,6 +82,8 @@ export interface SicoobApi {
   createCob(p: { txid: string; amountCents: number; expiresInSec: number; description: string; payerName?: string; payerDocument?: string }): Promise<SicoobCob>;
   getCob(txid: string): Promise<SicoobCob>;
   registerWebhook(url: string): Promise<void>;
+  /** Remove uma cobrança ainda não paga (padrão Bacen: status REMOVIDA_PELO_USUARIO_RECEBEDOR). */
+  cancelCob?(txid: string): Promise<void>;
 }
 
 export type MtlsRequest = (method: string, url: string, o: { headers?: Record<string, string>; body?: string }) => Promise<{ status: number; data: any }>;
@@ -128,6 +133,7 @@ export function sicoob(c: SicoobCreds, req: MtlsRequest = mtlsRequest(c), now = 
       return sicoobMap(p.txid, { ...d, valor: d.valor ?? { original: (p.amountCents / 100).toFixed(2) } });
     },
     async getCob(txid) { return sicoobMap(txid, await call('GET', `/cob/${txid}`)); },
+    async cancelCob(txid) { await call('PATCH', `/cob/${txid}`, { status: 'REMOVIDA_PELO_USUARIO_RECEBEDOR' }); },
     async registerWebhook(url) { await call('PUT', `/webhook/${encodeURIComponent(c.pixKey)}`, { webhookUrl: url }); },
   };
 }
