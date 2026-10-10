@@ -83,7 +83,7 @@ test('histórico: garçom vê o das mesas, não o de delivery; sem login não v�
 });
 
 test('o histórico é da comanda, não da mesa: outro cliente na mesma mesa começa com histórico limpo', async () => {
-  const caixa = client(env); await staffLogin(env, caixa, seed, 'balcao');
+  const caixa = client(env); await staffLogin(env, caixa, seed, 'gerente');   // quem pode cancelar/encerrar
   const a = await abrir(18);                                                                          // 1º cliente
   await garcom.post(`/v1/staff/orders/${a.body.id}/mesa`, { bill: true });
   assert.equal((await caixa.post(`/v1/staff/orders/${a.body.id}/status`, { to: 'cancelado', reason: 'cliente saiu' })).status, 200);   // comanda encerrada, mesa livre
