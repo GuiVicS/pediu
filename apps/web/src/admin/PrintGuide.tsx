@@ -3,7 +3,7 @@ import { CheckCircle2, Circle, Download, ExternalLink, Plug, Printer, Route } fr
 import { get } from '@/lib/api';
 import { cx } from '@/ui/kit';
 
-interface Info { available: boolean; sizeBytes: number; updatedAt: string | null }
+interface Info { available: boolean; sizeBytes: number; updatedAt: string | null; exe?: boolean }
 export interface GuideData { agents: number; agentsOnline: number; printers: number; zonesTotal: number; zonesWithoutPrinter: number }
 
 const FILES = [
@@ -12,19 +12,17 @@ const FILES = [
   { file: 'iniciar-agente-linux-mac.sh', label: 'Iniciar no Linux/Mac', hint: 'se não for Windows' },
 ];
 
-/** Zona de download do agente: três arquivos e o passo a passo para quem nunca instalou. */
+/** Zona de download do agente. Windows: um .exe (traz tudo dentro). Outros sistemas: o agente + um script de início (pede o Node.js). */
 export function AgentDownload({ compact }: { compact?: boolean }) {
   const [info, setInfo] = useState<Info | null>(null);
   useEffect(() => { void get<Info>('/v1/downloads/agent.json').then(setInfo).catch(() => setInfo({ available: false, sizeBytes: 0, updatedAt: null })); }, []);
-  return (
-    <div className="space-y-3 text-sm">
-      {!compact && <p>O <b>Pediu Agente</b> é um programinha que fica ligado no computador onde as impressoras estão. Ele recebe os pedidos da loja e manda para a impressora certa.</p>}
+  const manual = (
+    <div className="space-y-3">
       <ol className="list-decimal space-y-1.5 pl-5 text-muted-foreground">
         <li>Instale o <b className="text-foreground">Node.js</b> (versão LTS) no computador das impressoras: <a className="font-medium text-primary hover:underline" href="https://nodejs.org" target="_blank" rel="noopener noreferrer">nodejs.org <ExternalLink size={11} className="inline" /></a></li>
         <li>Baixe os arquivos abaixo e coloque os dois juntos em uma pasta, por exemplo <code>C:\PediuAgente</code>.</li>
-        <li>Dê dois cliques em <b className="text-foreground">iniciar-agente-windows.bat</b>. A tela do agente abre no navegador.</li>
+        <li>Dê dois cliques em <b className="text-foreground">iniciar-agente-windows.bat</b> (ou o <code>.sh</code> no Linux/Mac). A tela do agente abre no navegador.</li>
       </ol>
-      {info && !info.available && <p className="rounded-ui-sm bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-300">O agente ainda não foi preparado neste servidor. Fale com o suporte da PediuLanchou.</p>}
       <div className="grid gap-2 sm:grid-cols-3">
         {FILES.map((f) => (
           <a key={f.file} href={info?.available ? `/v1/downloads/${f.file}` : undefined} download={f.file} aria-disabled={!info?.available}
@@ -34,7 +32,26 @@ export function AgentDownload({ compact }: { compact?: boolean }) {
           </a>
         ))}
       </div>
-      <p className="text-xs text-muted-foreground">Um instalador com ícone (.exe) está nos planos. Por enquanto o agente roda com o Node.js e pode iniciar junto com o computador pela própria tela dele.</p>
+    </div>
+  );
+  return (
+    <div className="space-y-3 text-sm">
+      {!compact && <p>O <b>Pediu Agente</b> é um programinha que fica ligado no computador onde as impressoras estão. Ele recebe os pedidos da loja e manda para a impressora certa.</p>}
+      {info?.exe && (
+        <div className="space-y-2">
+          <a href="/v1/downloads/pediu-agente.exe" download="pediu-agente.exe" className="flex items-center gap-3 rounded-ui border-2 border-primary bg-primary/5 p-3.5 transition hover:bg-primary/10">
+            <Download size={22} className="shrink-0 text-primary" aria-hidden />
+            <span className="min-w-0 flex-1"><b className="block">Baixar para Windows (pediu-agente.exe)</b><span className="block text-xs text-muted-foreground">Recomendado · não precisa instalar mais nada · cerca de 90 MB</span></span>
+          </a>
+          <ol className="list-decimal space-y-1 pl-5 text-muted-foreground">
+            <li>Copie o <b className="text-foreground">pediu-agente.exe</b> para o computador das impressoras (ex.: <code>C:\PediuAgente</code>).</li>
+            <li>Dê dois cliques. A tela do agente abre no navegador.</li>
+            <li>Se o Windows avisar “protegeu o computador”, clique em <b className="text-foreground">Mais informações › Executar assim mesmo</b> (o arquivo ainda não tem assinatura digital).</li>
+          </ol>
+        </div>
+      )}
+      {info && !info.available && !info.exe && <p className="rounded-ui-sm bg-amber-500/10 px-3 py-2 text-amber-800 dark:text-amber-300">O agente ainda não foi preparado neste servidor. Fale com o suporte da PediuLanchou.</p>}
+      {info?.exe ? <details className="rounded-ui-sm border border-border p-3"><summary className="cursor-pointer font-medium">Outro jeito: Linux, Mac ou com o Node.js</summary><div className="mt-3">{manual}</div></details> : manual}
     </div>
   );
 }

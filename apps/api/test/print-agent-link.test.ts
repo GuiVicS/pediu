@@ -1,5 +1,6 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,7 +8,7 @@ import WebSocket from 'ws';
 import { client, seedStore, setup, staffLogin, type Env, type Seeded } from './helpers.js';
 
 let env: Env; let seed: Seeded;
-before(async () => { env = await setup(); seed = await seedStore(env, 'agente-link'); });
+before(async () => { env = await setup(); seed = await seedStore(env, 'agente-link'); process.env.AGENT_EXE_URL = 'http://127.0.0.1:1/nada.exe'; });   // nenhum teste fala com a internet
 after(() => env.close());
 
 test('download do agente: lista, entrega o bundle e os scripts de início; sem compilar, avisa', async () => {
@@ -26,6 +27,27 @@ test('download do agente: lista, entrega o bundle e os scripts de início; sem c
   assert.equal((await c.get('/v1/downloads/../../etc/passwd')).status, 404);
   assert.equal((await c.get('/v1/downloads/qualquer.exe')).status, 404);
   delete process.env.AGENT_DIST_DIR;
+});
+
+test('instalador .exe: arquivo local tem prioridade; senão redireciona para o endereço externo; sem nenhum, avisa', async () => {
+  const c = client(env);
+  const dir = await mkdtemp(join(tmpdir(), 'dist-')); await writeFile(join(dir, 'agent.mjs'), 'x'.repeat(20));
+  process.env.AGENT_DIST_DIR = dir;
+  assert.equal((await c.get('/v1/downloads/agent.json')).body.exe, false);                       // endereço externo fora do ar, sem arquivo
+  assert.equal((await c.get('/v1/downloads/pediu-agente.exe')).status, 404);
+
+  const ext = createServer((req, res) => { res.writeHead(req.url === '/ok.exe' ? 200 : 404); res.end(); });
+  await new Promise<void>((r) => ext.listen(0, '127.0.0.1', () => r()));
+  const base = `http://127.0.0.1:${(ext.address() as { port: number }).port}`;
+  try {
+    process.env.AGENT_EXE_URL = `${base}/ok.exe`;
+    assert.equal((await c.get('/v1/downloads/agent.json')).body.exe, true);
+    const red = await env.app.inject({ method: 'GET', url: '/v1/downloads/pediu-agente.exe' });
+    assert.equal(red.statusCode, 302); assert.equal(red.headers.location, `${base}/ok.exe`);
+    await writeFile(join(dir, 'pediu-agente.exe'), Buffer.from('MZ-fake-exe'));                  // arquivo local vence
+    const f = await env.app.inject({ method: 'GET', url: '/v1/downloads/pediu-agente.exe' });
+    assert.equal(f.statusCode, 200); assert.equal(f.body, 'MZ-fake-exe'); assert.match(String(f.headers['content-disposition']), /pediu-agente\.exe/);
+  } finally { ext.close(); process.env.AGENT_EXE_URL = 'http://127.0.0.1:1/nada.exe'; delete process.env.AGENT_DIST_DIR; }
 });
 
 test('"Puxar impressoras": o painel pede, o agente responde pelo WebSocket e a lista volta na hora', async () => {

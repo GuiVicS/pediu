@@ -1,7 +1,6 @@
 @echo off
 chcp 65001 >nul
 setlocal
-cd /d "%~dp0"
 echo ============================================================
 echo  Pediu Agente de Impressao - gerar o executavel (.exe)
 echo ============================================================
@@ -18,7 +17,18 @@ if %NODEMAJOR% LSS 20 (
   pause & exit /b 1
 )
 
-echo [1/5] Instalando dependencias...
+REM Compila numa pasta LOCAL: o Google Drive (G:) e outros discos virtuais/sincronizados quebram o npm install.
+set "SRC=%~dp0"
+set "WORK=%LOCALAPPDATA%\PediuAgenteBuild"
+echo [0/5] Copiando os arquivos para uma pasta local de trabalho...
+if exist "%WORK%" rmdir /s /q "%WORK%"
+mkdir "%WORK%"
+robocopy "%SRC%." "%WORK%" /E /XD node_modules dist .git /NFL /NDL /NJH /NJS /NP >nul
+if errorlevel 8 ( echo [ERRO] Nao foi possivel copiar os arquivos para %WORK%. & pause & exit /b 1 )
+cd /d "%WORK%"
+if not exist src\cli.ts ( echo [ERRO] Arquivos do agente nao encontrados em %SRC%. Extraia o .zip inteiro antes. & pause & exit /b 1 )
+
+echo [1/5] Instalando dependencias (precisa de internet)...
 call npm install --no-audit --no-fund
 if errorlevel 1 ( echo [ERRO] npm install falhou. & pause & exit /b 1 )
 
@@ -46,12 +56,21 @@ if exist icone.ico (
   echo [AVISO] icone.ico nao encontrado: o .exe fica com o icone padrao do Node.js.
 )
 
+REM Entrega: Area de Trabalho (certo), e tenta tambem a pasta do script
+for /f "delims=" %%d in ('powershell -NoProfile -Command "[Environment]::GetFolderPath('Desktop')"') do set "DESK=%%d"
+copy /y dist\pediu-agente.exe "%DESK%\pediu-agente.exe" >nul 2>nul
+if not exist "%SRC%dist" mkdir "%SRC%dist" >nul 2>nul
+copy /y dist\pediu-agente.exe "%SRC%dist\pediu-agente.exe" >nul 2>nul
+
 echo.
 echo ============================================================
-echo  PRONTO: %~dp0dist\pediu-agente.exe
+echo  PRONTO!
+echo  Na Area de Trabalho:  %DESK%\pediu-agente.exe
+echo  Copia de seguranca:   %WORK%\dist\pediu-agente.exe
 echo ============================================================
 echo  Dois cliques no .exe abre a tela do agente no navegador.
 echo  Ele ja inclui o Node.js: nao precisa instalar mais nada no computador da loja.
-echo  Se o Windows avisar "protegeu o computador" (SmartScreen), e porque o arquivo nao e assinado: Mais informacoes ^> Executar assim mesmo.
+echo  Se o Windows avisar "protegeu o computador" (SmartScreen), e porque o arquivo nao e assinado:
+echo  Mais informacoes ^> Executar assim mesmo.
 echo.
 pause

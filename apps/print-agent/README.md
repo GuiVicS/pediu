@@ -30,4 +30,8 @@ Escuta só em `127.0.0.1`, confere o cabeçalho Host (contra DNS rebinding) e ex
 ## Desenvolvimento
 `npm run agent:build` (na raiz) gera `apps/print-agent/dist/agent.mjs`. O servidor oferece esse arquivo em `/v1/downloads/` (variável `AGENT_DIST_DIR`; a imagem Docker da API já compila e aponta para ele).
 
-Pendente: instalador `.exe` com ícone (precisa ser compilado no Windows).
+## Instalador do Windows (.exe)
+`compilar-exe-windows.bat` (nesta pasta) gera o `pediu-agente.exe` com o Node.js embutido (Node SEA). Rode num Windows com Node 20+ e **fora** de discos virtuais (como o Google Drive).
+O arquivo (~90 MB) não vai no Git: fica como *asset* do release `agente-v<versão>` no GitHub, e a API o oferece em `/v1/downloads/pediu-agente.exe` (redireciona para `AGENT_EXE_URL`, ou serve o arquivo se ele estiver em `AGENT_DIST_DIR`).
+Versão atual publicada: 0.1.0 · sha256 `c79ee7ae88aaa3087ed2d4c73c276c7ea4ad0d70090aae12e7f496a1a8ff09a9`.
+Pendente: ícone da PediuLanchou no .exe (o passo `rcedit` do script precisa de ajuste) e assinatura digital (evita o aviso do SmartScreen).
