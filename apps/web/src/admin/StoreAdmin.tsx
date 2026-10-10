@@ -11,6 +11,10 @@ import { McpPanel } from './McpPanel';
 
 type ZDraft = Omit<DeliveryZone, 'id'> & { id?: string };
 
+/** Os 7 dias da semana, completando com o padrão os que a loja ainda não configurou. */
+const weekHours = (hours: Store['hours'] | undefined): Store['hours'] => Array.from({ length: 7 }, (_, day) => hours?.find((h) => h.day === day) ?? { day, closed: day === 0, open: '18:00', close: '23:00' });
+const hoursKey = (hours: Store['hours']) => JSON.stringify(hours.map((h) => [h.day, h.closed, h.open, h.close]));
+
 export default function StoreAdmin() {
   const [saved, saveStore] = useKV<Store>('store');
   const zones = useCollection<DeliveryZone>('deliveryZones');
@@ -18,11 +22,12 @@ export default function StoreAdmin() {
   const [form, setForm] = useState<Store | null>(null);
   const [zone, setZone] = useState<ZDraft | null>(null);
   useEffect(() => {
-    if (saved && !form) setForm({ ...STORE_DEFAULTS, ...saved, hours: Array.from({ length: 7 }, (_, day) => saved.hours?.find((h) => h.day === day) ?? { day, closed: day === 0, open: '18:00', close: '23:00' }) });
+    if (saved && !form) setForm({ ...STORE_DEFAULTS, ...saved, hours: weekHours(saved.hours) });
   }, [saved, form]);
   if (!form) return null;
   const set = <K extends keyof Store>(k: K, v: Store[K]) => setForm({ ...form, [k]: v });
-  const dirty = !!saved && JSON.stringify(form) !== JSON.stringify({ ...STORE_DEFAULTS, ...saved, hours: form.hours });
+  // os horários são comparados à parte: o banco devolve as chaves em outra ordem, então o JSON inteiro não serve para eles
+  const dirty = !!saved && (JSON.stringify(form) !== JSON.stringify({ ...STORE_DEFAULTS, ...saved, hours: form.hours }) || hoursKey(form.hours) !== hoursKey(weekHours(saved.hours)));
 
   return (
     <>
