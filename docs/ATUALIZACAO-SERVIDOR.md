@@ -2,7 +2,7 @@
 
 > **Para quem é este arquivo:** você é o Claude que está dentro do servidor onde roda o PediuLanchou (Portainer + Docker). O dono do sistema vai te passar este documento. Sua missão: **atualizar o sistema com todas as mudanças da branch `fix/relatorio-testes-1`**, conferir que tudo subiu e relatar o resultado. Leia o documento inteiro antes de executar qualquer comando.
 >
-> Repositório: `https://github.com/GuiVicS/pediu` · Branch com as mudanças: `fix/relatorio-testes-1` (último commit conhecido: `d552876`).
+> Repositório: `https://github.com/GuiVicS/pediu` · Branch com as mudanças: `fix/relatorio-testes-1` (use sempre o commit mais novo da branch; na hora em que este guia foi escrito era `6a35771`).
 > Idioma: responda ao dono sempre em **português do Brasil**, de forma simples (ele não é técnico em infraestrutura).
 
 ---
@@ -43,7 +43,7 @@ Banco de dados: **PostgreSQL do Supabase** (3 conexões por papel: `APP_DATABASE
 
 ## 2. O que muda nesta atualização (resumo)
 
-Tudo está em `origin/fix/relatorio-testes-1` (16 commits sobre a `main`; 80 arquivos). Testes automáticos: todos passam (API 153, shared 32, web 7, agente 4 e testes de isolamento SQL).
+Tudo está em `origin/fix/relatorio-testes-1` (cerca de 18 commits sobre a `main`). Testes automáticos: todos passam (API 153, shared 32, web 7, agente 4 e testes de isolamento SQL).
 
 | Área | O que o dono verá |
 |---|---|
@@ -157,7 +157,7 @@ O dono informou que **ele mesmo aplicará os SQLs**. Então:
 ### 6.2 Conferir o código que será implantado
 
 ```bash
-git ls-remote https://github.com/GuiVicS/pediu fix/relatorio-testes-1   # deve começar com d552876 (ou mais novo)
+git ls-remote https://github.com/GuiVicS/pediu fix/relatorio-testes-1   # deve começar com 6a35771 (ou mais novo)
 ```
 
 ---
