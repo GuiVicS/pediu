@@ -10,7 +10,7 @@ import { loadMenu } from './menu.js';
 
 /**
  * MCP da loja: deixa um assistente de IA (Claude, ChatGPT etc.) GERENCIAR OS PEDIDOS da própria loja.
- * Escopo único: pedidos (consultar o cardápio só para montar o pedido, criar, listar, ver, mudar status, cancelar).
+ * Escopo único: pedidos (leitura SÓ do cardápio; escrita de pedidos: criar, mudar status, cancelar; sem leitura de pedidos ou clientes).
  * Não altera cardápio, pagamentos, equipe nem configurações; não recebe pagamento (isso fica com o PDV).
  * O token é gerado pelo lojista em Loja › Avançado e vale só para a loja dele. Protocolo MCP "Streamable HTTP" sem estado,
  * implementado aqui mesmo (JSON-RPC) para rodar dentro da API, com o mesmo isolamento por loja (RLS) do resto do sistema.
@@ -19,29 +19,28 @@ const PREFIX = 'pomc';
 const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const MAX_ACTIVE_TOKENS = 5;
 
-const STATUS = ['novo', 'preparo', 'pronto', 'saiu', 'entregue', 'cancelado'] as const;
-const TYPE_LABEL: Record<string, string> = { delivery: 'entrega', retirada: 'retirada', mesa: 'mesa' };
-
 export const STORE_MCP_TOOLS = [
-  { name: 'consultar_cardapio', description: 'Somente leitura. Mostra o cardápio da loja (categorias, produtos com preço e disponibilidade, adicionais), as regiões de entrega com taxa e as formas de pagamento. Use antes de criar_pedido para usar os nomes exatos.',
-    inputSchema: { type: 'object', properties: { busca: { type: 'string', description: 'opcional: filtra produtos pelo nome' } }, additionalProperties: false } },
-  { name: 'criar_pedido', description: 'Lança um pedido novo na loja (retirada/balcão, entrega ou mesa). Os itens e adicionais vão pelo NOME, como em consultar_cardapio. O pedido nasce como "novo", entra no fluxo normal da loja e fica A RECEBER: o pagamento é registrado pelo lojista no PDV. Confirme os dados com o lojista antes de criar.',
+  // ---- LEITURA (só o cardápio) ----
+  { name: 'listar_colecoes', description: 'Somente leitura. Lista TODAS as coleções (categorias) do cardápio da loja, com a quantidade de produtos de cada uma.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
+  { name: 'listar_produtos', description: 'Somente leitura. Lista TODOS os produtos do cardápio: nome, descrição, preço, disponibilidade, coleção, tempo de preparo, foto e adicionais. Pode filtrar por coleção e/ou por parte do nome.',
+    inputSchema: { type: 'object', properties: {
+      colecao: { type: 'string', description: 'nome da coleção (categoria) para filtrar' }, busca: { type: 'string', description: 'parte do nome do produto' },
+      somente_disponiveis: { type: 'boolean', description: 'true = esconde os produtos indisponíveis no momento (padrão: mostra todos)' } }, additionalProperties: false } },
+  { name: 'consultar_cardapio', description: 'Somente leitura. O cardápio completo de uma vez: todas as coleções com seus produtos e adicionais, mais as regiões de entrega (com taxa) e as formas de pagamento da loja.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
+  // ---- ESCRITA (pedidos). Não existe leitura de pedidos: o assistente não lista nem consulta pedidos nem dados de clientes ----
+  { name: 'criar_pedido', description: 'Lança um pedido novo na loja (retirada/balcão, entrega ou mesa). NOME e TELEFONE do cliente são OBRIGATÓRIOS em qualquer tipo de pedido. Os itens e adicionais vão pelo NOME, como em listar_produtos. O pedido nasce como "novo", entra no fluxo normal da loja e fica A RECEBER: o pagamento é registrado pelo lojista no PDV. Devolve o número do pedido. Confirme os dados com o lojista antes de criar.',
     inputSchema: { type: 'object', properties: {
       tipo: { type: 'string', enum: ['retirada', 'delivery', 'mesa'] },
-      cliente: { type: 'string', description: 'nome do cliente (obrigatório na entrega)' }, telefone: { type: 'string' },
+      cliente: { type: 'string', minLength: 2, maxLength: 80, description: 'OBRIGATÓRIO. Nome do cliente' },
+      telefone: { type: 'string', description: 'OBRIGATÓRIO. Celular/WhatsApp do cliente com DDD, ex.: (16) 99999-0000' },
       endereco: { type: 'string', description: 'rua, número, bairro (obrigatório na entrega)' }, regiao: { type: 'string', description: 'nome da região de entrega (obrigatório na entrega)' },
       mesa: { type: 'integer', description: 'número da mesa (obrigatório quando tipo = mesa)' }, pessoas: { type: 'integer' },
       forma_pagamento: { type: 'string', description: 'nome da forma de pagamento combinada (opcional; só formas presenciais)' }, observacao: { type: 'string', maxLength: 300 },
       itens: { type: 'array', minItems: 1, maxItems: 30, items: { type: 'object', properties: { produto: { type: 'string' }, quantidade: { type: 'integer', minimum: 1, maximum: 50 }, observacao: { type: 'string', maxLength: 200 }, adicionais: { type: 'array', items: { type: 'string' }, description: 'nomes das opções de adicional' } }, required: ['produto'], additionalProperties: false } } },
-      required: ['tipo', 'itens'], additionalProperties: false } },
-  { name: 'listar_pedidos', description: 'Lista os pedidos da loja, do mais novo para o mais antigo. Por padrão traz só os que estão em aberto (novo, em preparo, pronto, saiu para entrega).',
-    inputSchema: { type: 'object', properties: {
-      status: { type: 'string', enum: ['abertos', ...STATUS], description: '"abertos" (padrão) ou um status específico' },
-      tipo: { type: 'string', enum: ['delivery', 'retirada', 'mesa'], description: 'filtra pelo tipo do pedido' },
-      limite: { type: 'integer', minimum: 1, maximum: 50, description: 'quantos pedidos trazer (padrão 20)' } }, additionalProperties: false } },
-  { name: 'ver_pedido', description: 'Mostra um pedido completo (itens, adicionais, observações, cliente, endereço, pagamento) e o histórico do que já aconteceu com ele.',
-    inputSchema: { type: 'object', properties: { numero: { type: 'integer', description: 'número do pedido, como #1005' } }, required: ['numero'], additionalProperties: false } },
-  { name: 'mudar_status', description: 'Avança o pedido pelo fluxo da loja: preparo (aceitar), pronto, saiu (saiu para entrega) ou entregue. Só vale para a etapa seguinte permitida; o sistema recusa saltos inválidos.',
+      required: ['tipo', 'cliente', 'telefone', 'itens'], additionalProperties: false } },
+  { name: 'mudar_status', description: 'Avança um pedido pelo fluxo da loja: preparo (aceitar), pronto, saiu (saiu para entrega) ou entregue. Informe o número do pedido (o criar_pedido devolve o número; o lojista também pode informar). Só vale para a etapa seguinte permitida; o sistema recusa saltos inválidos.',
     inputSchema: { type: 'object', properties: { numero: { type: 'integer' }, para: { type: 'string', enum: ['preparo', 'pronto', 'saiu', 'entregue'] } }, required: ['numero', 'para'], additionalProperties: false } },
   { name: 'cancelar_pedido', description: 'Cancela um pedido que ainda não foi entregue. O motivo é obrigatório e fica registrado. Atenção: não devolve dinheiro (estorno é feito pelo lojista no painel).',
     inputSchema: { type: 'object', properties: { numero: { type: 'integer' }, motivo: { type: 'string', maxLength: 200 } }, required: ['numero', 'motivo'], additionalProperties: false } },
@@ -49,7 +48,6 @@ export const STORE_MCP_TOOLS = [
 
 interface Caller { tokenId: string; tokenName: string; storeId: string; tenantId: string; ip: string }
 const money = (c: number) => `R$ ${(Number(c) / 100).toFixed(2).replace('.', ',')}`;
-const minutesAgo = (d: unknown) => Math.max(0, Math.round((Date.now() - new Date(String(d)).getTime()) / 60_000));
 
 const norm = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 /** Acha um item pelo nome (sem ligar para acento/maiúscula): exato primeiro, depois "contém"; ambíguo ou inexistente vira erro com as opções. */
@@ -61,14 +59,26 @@ function byName<T extends { name: string }>(items: T[], wanted: string, what: st
   return { error: part.length ? `"${wanted}" é ambíguo para ${what}. Qual destes? ${list}` : `Não encontrei ${what} "${wanted}". Opções: ${list || '(nenhuma cadastrada)'}` };
 }
 
+/** Telefone brasileiro só com dígitos (DDD + número): aceita "(16) 99999-0000", "+55 16 99999-0000", "16999990000"; fixo (10) ou celular (11). */
+export function normPhone(raw: string): string | null {
+  let d = raw.replace(/\D/g, '');
+  if ((d.length === 12 || d.length === 13) && d.startsWith('55')) d = d.slice(2);
+  if (d.length !== 10 && d.length !== 11) return null;
+  if (Number(d.slice(0, 2)) < 11) return null;                 // DDD inválido
+  if (d.length === 11 && d[2] !== '9') return null;            // celular começa com 9
+  return d;
+}
+
 const args = {
-  cardapio: z.object({ busca: z.string().trim().max(60).optional() }),
+  produtos: z.object({ colecao: z.string().trim().max(80).optional(), busca: z.string().trim().max(60).optional(), somente_disponiveis: z.boolean().default(false) }),
   criar: z.object({
-    tipo: z.enum(['retirada', 'delivery', 'mesa']), cliente: z.string().trim().max(80).default(''), telefone: z.string().trim().max(20).default(''), endereco: z.string().trim().max(200).default(''),
+    tipo: z.enum(['retirada', 'delivery', 'mesa']),
+    cliente: z.string({ required_error: 'Informe o nome do cliente (obrigatório).' }).trim().min(2, 'Informe o nome do cliente (obrigatório).').max(80).refine((v) => /\p{L}{2}/u.test(v), 'O nome do cliente precisa ter letras.'),
+    telefone: z.string({ required_error: 'Informe o telefone do cliente (obrigatório).' }).trim().min(1, 'Informe o telefone do cliente (obrigatório).').max(25),
+    endereco: z.string().trim().max(200).default(''),
     regiao: z.string().trim().max(80).optional(), mesa: z.number().int().min(1).max(500).optional(), pessoas: z.number().int().min(1).max(99).optional(), forma_pagamento: z.string().trim().max(60).optional(), observacao: z.string().trim().max(300).default(''),
     itens: z.array(z.object({ produto: z.string().trim().min(1).max(120), quantidade: z.number().int().min(1).max(50).default(1), observacao: z.string().trim().max(200).default(''), adicionais: z.array(z.string().trim().min(1).max(80)).max(30).default([]) })).min(1).max(30),
   }),
-  listar: z.object({ status: z.enum(['abertos', ...STATUS]).default('abertos'), tipo: z.enum(['delivery', 'retirada', 'mesa']).optional(), limite: z.number().int().min(1).max(50).default(20) }),
   numero: z.object({ numero: z.number().int().min(1).max(10_000_000) }),
   mudar: z.object({ numero: z.number().int().min(1).max(10_000_000), para: z.enum(['preparo', 'pronto', 'saiu', 'entregue']) }),
   cancelar: z.object({ numero: z.number().int().min(1).max(10_000_000), motivo: z.string().trim().min(3, 'Informe o motivo do cancelamento.').max(200) }),
@@ -77,7 +87,7 @@ const args = {
 /** Formato do cardápio que o MCP lê (loadMenu devolve linhas soltas do banco). */
 interface MenuData {
   categories: { id: string; name: string }[];
-  products: { id: string; category_id: string; name: string; description: string; price: number; available: boolean; group_ids: string[] }[];
+  products: { id: string; category_id: string; name: string; description: string; price: number; available: boolean; group_ids: string[]; prep_time?: number; image_url?: string }[];
   groups: { id: string; name: string; min: number; max: number; required: boolean; addons: { id: string; name: string; price: number }[] }[];
   zones: { id: string; name: string; fee: number; eta: number }[];
 }
@@ -85,31 +95,51 @@ type Out = { text: string; error?: boolean };
 const ok = (data: unknown): Out => ({ text: JSON.stringify(data, null, 2) });
 const bad = (msg: string): Out => ({ text: msg, error: true });
 
+type MenuRead = MenuData & { pays: { id: string; name: string; type: string; online: boolean }[]; open: { open: boolean; label: string } };
+/** Lê o cardápio da loja (somente leitura): coleções, produtos, adicionais, regiões, formas de pagamento e se está aberta. */
+async function readMenu(ctx: Ctx, c: Caller): Promise<MenuRead> {
+  return withTenant(ctx.pools, c.tenantId, async (q) => {
+    const m = (await loadMenu(q, c.storeId)) as unknown as MenuData;
+    const [pays, cfg] = await Promise.all([q`select id, name, type, online from payment_methods where store_id = ${c.storeId} and active order by sort`, q`select data from store_settings where store_id = ${c.storeId}`]);
+    return { ...m, pays: pays as unknown as MenuRead['pays'], open: getOpenStatus(((cfg[0]?.data ?? {}) as Record<string, any>), ctx.clock.now()) };
+  });
+}
+const shapeProduct = (p: MenuData['products'][number], m: MenuData, cat: { name: string }) => ({
+  nome: p.name, colecao: cat.name, descricao: p.description || undefined, preco: money(Math.round(Number(p.price) * 100)), disponivel: !!p.available, tempo_preparo_min: p.prep_time || undefined, foto: p.image_url || undefined,
+  adicionais: p.group_ids.map((id) => m.groups.find((g) => g.id === id)).filter((g) => !!g && g.addons.length > 0).map((g) => ({ grupo: g!.name, obrigatorio: !!g!.required, minimo: g!.min, maximo: g!.max, opcoes: g!.addons.map((x) => ({ nome: x.name, preco_extra: money(Math.round(x.price * 100)) })) })),
+});
+
 async function callTool(ctx: Ctx, c: Caller, name: string, raw: unknown): Promise<Out> {
   const find = (numero: number) => withTenant(ctx.pools, c.tenantId, async (q) => (await q`select id, number, status, type from orders where store_id = ${c.storeId} and number = ${numero}`)[0]);
   const actor = { tenantId: c.tenantId, storeId: c.storeId, staffId: null, actorId: `mcp:${c.tokenId}`, role: 'gerente' as const, ip: c.ip };
 
   switch (name) {
-    case 'consultar_cardapio': {
-      const a = args.cardapio.parse(raw ?? {});
-      const out = await withTenant(ctx.pools, c.tenantId, async (q) => {
-        const m = (await loadMenu(q, c.storeId)) as unknown as MenuData;
-        const [pays, cfg] = await Promise.all([q`select name, type, online from payment_methods where store_id = ${c.storeId} and active order by sort`, q`select data from store_settings where store_id = ${c.storeId}`]);
-        return { m, pays, open: getOpenStatus(((cfg[0]?.data ?? {}) as Record<string, any>), ctx.clock.now()) };
-      });
+    case 'listar_colecoes': {
+      const m = await readMenu(ctx, c);
+      return ok({ total: m.categories.length, colecoes: m.categories.map((cat) => { const ps = m.products.filter((p) => p.category_id === cat.id); return { nome: cat.name, produtos: ps.length, disponiveis: ps.filter((p) => p.available).length }; }) });
+    }
+    case 'listar_produtos': {
+      const a = args.produtos.parse(raw ?? {});
+      const m = await readMenu(ctx, c);
+      let cats = m.categories;
+      if (a.colecao) { const f = byName(m.categories, a.colecao, 'a coleção'); if ('error' in f) return bad(f.error); cats = [f.item]; }
       const w = a.busca ? norm(a.busca) : '';
-      const groups = new Map(out.m.groups.map((g) => [g.id, g]));
+      const rows = m.products.filter((p) => cats.some((cat) => cat.id === p.category_id) && (!a.somente_disponiveis || p.available) && (!w || norm(p.name).includes(w)));
+      return ok({ total: rows.length, produtos: rows.map((p) => shapeProduct(p, m, cats.length === 1 ? cats[0]! : m.categories.find((cat) => cat.id === p.category_id)!)) });
+    }
+    case 'consultar_cardapio': {
+      const m = await readMenu(ctx, c);
       return ok({
-        loja: { aberta: out.open.open, situacao: out.open.label },
-        categorias: out.m.categories.map((cat) => ({ nome: cat.name, produtos: out.m.products.filter((p) => p.category_id === cat.id && (!w || norm(p.name).includes(w))).map((p) => ({
-          nome: p.name, preco: money(Math.round(Number(p.price) * 100)), disponivel: !!p.available, descricao: p.description || undefined,
-          adicionais: p.group_ids.map((id) => groups.get(id)).filter((g) => !!g && g.addons.length > 0).map((g) => ({ grupo: g!.name, obrigatorio: !!g!.required, minimo: g!.min, maximo: g!.max, opcoes: g!.addons.map((x) => ({ nome: x.name, preco_extra: money(Math.round(x.price * 100)) })) })) })) })).filter((cat) => cat.produtos.length > 0),
-        regioes_de_entrega: out.m.zones.map((z) => ({ nome: z.name, taxa: money(Math.round(z.fee * 100)), tempo_min: z.eta })),
-        formas_de_pagamento: out.pays.map((p) => ({ nome: p.name, tipo: p.type, online: !!p.online })),
+        loja: { aberta: m.open.open, situacao: m.open.label },
+        colecoes: m.categories.map((cat) => ({ nome: cat.name, produtos: m.products.filter((p) => p.category_id === cat.id).map((p) => shapeProduct(p, m, cat)) })),
+        regioes_de_entrega: m.zones.map((z) => ({ nome: z.name, taxa: money(Math.round(z.fee * 100)), tempo_min: z.eta })),
+        formas_de_pagamento: m.pays.map((p) => ({ nome: p.name, tipo: p.type, online: !!p.online })),
       });
     }
     case 'criar_pedido': {
       const a = args.criar.parse(raw ?? {});
+      const phone = normPhone(a.telefone);
+      if (!phone) return bad('Telefone inválido: informe DDD + número do cliente, ex.: (16) 99999-0000.');
       const ref = await withTenant(ctx.pools, c.tenantId, async (q) => ({ m: (await loadMenu(q, c.storeId)) as unknown as MenuData, pays: await q`select id, name, online from payment_methods where store_id = ${c.storeId} and active` }));
       const groups = new Map(ref.m.groups.map((g) => [g.id, g]));
       const lines: { productId: string; qty: number; note: string; addons: { groupId: string; addonIds: string[] }[] }[] = [];
@@ -139,39 +169,10 @@ async function callTool(ctx: Ctx, c: Caller, name: string, raw: unknown): Promis
         if (pm.item.online) return bad(`"${pm.item.name}" é pagamento online (Pix/cartão pelo site) e não pode ser usado por aqui. Escolha uma forma presencial ou deixe sem forma de pagamento.`);
         paymentId = pm.item.id;
       }
-      const input = staffOrderIn.parse({ type: a.tipo, customerName: a.cliente, phone: a.telefone, address: a.endereco, zoneId, table: a.mesa, guests: a.pessoas, note: a.observacao, paymentId, receiveNow: false, lines });
+      const input = staffOrderIn.parse({ type: a.tipo, customerName: a.cliente, phone, address: a.endereco, zoneId, table: a.mesa, guests: a.pessoas, note: a.observacao, paymentId, receiveNow: false, lines });
       const r = await createStaffOrder(ctx, { tenantId: c.tenantId, storeId: c.storeId, staffId: null, actorId: actor.actorId }, input);
       if (!r.ok) return bad(r.message);
       return ok({ ok: true, numero: r.number, total: money(r.totalCents), status: 'novo', mensagem: `Pedido #${r.number} criado (${money(r.totalCents)}). Já entrou no fluxo da loja. O pagamento fica A RECEBER: o lojista registra no PDV.` });
-    }
-    case 'listar_pedidos': {
-      const a = args.listar.parse(raw ?? {});
-      const rows = await withTenant(ctx.pools, c.tenantId, (q) => q`
-        select o.id, o.number, o.type, o.channel, o.status, o.customer_name, o.total_cents, o.paid, o.table_number, o.created_at, o.note,
-          coalesce((select jsonb_agg(i.qty || '× ' || i.name order by i.created_at) from order_items i where i.order_id = o.id), '[]'::jsonb) as itens
-        from orders o where o.store_id = ${c.storeId}
-          and (${a.status}::text = 'abertos' and o.status in ('novo', 'preparo', 'pronto', 'saiu') or o.status = ${a.status}::text)
-          and (${a.tipo ?? null}::text is null or o.type = ${a.tipo ?? null})
-        order by o.created_at desc limit ${a.limite}`);
-      return ok({ total: rows.length, pedidos: rows.map((r) => ({ numero: r.number, tipo: TYPE_LABEL[r.type as string] ?? r.type, canal: r.channel, status: r.status, cliente: r.customer_name, mesa: r.table_number ?? undefined, total: money(r.total_cents), pago: !!r.paid, ha_minutos: minutesAgo(r.created_at), itens: r.itens, observacao: r.note || undefined })) });
-    }
-    case 'ver_pedido': {
-      const { numero } = args.numero.parse(raw ?? {});
-      const out = await withTenant(ctx.pools, c.tenantId, async (q) => {
-        const [o] = await q`select id, number, type, channel, status, customer_name, customer_phone, address, table_number, note, subtotal_cents, fee_cents, discount_cents, total_cents, payment_method, paid, created_at, cancel_reason from orders where store_id = ${c.storeId} and number = ${numero}`;
-        if (!o) return null;
-        const items = await q`select qty, name, total_cents, note, addons from order_items where order_id = ${o.id} order by created_at`;
-        const ev = await q`select e.at, e.event, e.data, coalesce(u.name, t.name || ' (MCP)', case e.actor_kind when 'customer' then 'Cliente' when 'system' then 'Sistema' else null end) as quem
-                           from order_events e left join staff_users u on e.actor_kind = 'staff' and u.id::text = e.actor_id and u.store_id = e.store_id
-                           left join store_mcp_tokens t on e.actor_id = 'mcp:' || t.id::text where e.order_id = ${o.id} order by e.id`;
-        return { o, items, ev };
-      });
-      if (!out) return bad(`Pedido #${numero} não encontrado nesta loja.`);
-      const { o } = out;
-      return ok({ numero: o.number, tipo: TYPE_LABEL[o.type as string] ?? o.type, canal: o.channel, status: o.status, mesa: o.table_number ?? undefined, cliente: o.customer_name, telefone: o.customer_phone || undefined, endereco: o.address || undefined, observacao: o.note || undefined,
-        itens: out.items.map((i) => ({ qtd: i.qty, nome: i.name, total: money(i.total_cents), observacao: i.note || undefined, adicionais: Array.isArray(i.addons) ? i.addons.map((a: { name?: string }) => a.name) : undefined })),
-        subtotal: money(o.subtotal_cents), taxa_entrega: money(o.fee_cents), desconto: money(o.discount_cents), total: money(o.total_cents), pagamento: o.payment_method, pago: !!o.paid, motivo_cancelamento: o.cancel_reason || undefined, ha_minutos: minutesAgo(o.created_at),
-        historico: out.ev.map((e) => ({ quando: e.at, quem: e.quem ?? 'equipe', evento: e.event, detalhes: e.data ?? undefined })) });
     }
     case 'mudar_status': {
       const a = args.mudar.parse(raw ?? {}); const o = await find(a.numero);
@@ -200,7 +201,7 @@ async function handleRpc(ctx: Ctx, c: Caller, m: Rpc): Promise<unknown | null> {
     case 'initialize': {
       const asked = String((m.params as { protocolVersion?: unknown } | undefined)?.protocolVersion ?? '');
       return { jsonrpc: '2.0', id: m.id, result: { protocolVersion: PROTOCOLS.includes(asked) ? asked : PROTOCOLS[1], capabilities: { tools: {} }, serverInfo: { name: 'pediu-pedidos', version: '1.0.0' },
-        instructions: 'Você gerencia os pedidos de UMA loja de delivery. Use listar_pedidos para ver o que está em aberto, ver_pedido para detalhes e mudar_status para avançar cada pedido. Para lançar um pedido, consulte o cardápio primeiro (consultar_cardapio) e confirme os dados com o lojista antes de criar_pedido. Cancelar exige motivo; confirme com o lojista antes de cancelar.' } };
+        instructions: 'Você trabalha para UMA loja de delivery. LEITURA: somente o cardápio (listar_colecoes, listar_produtos, consultar_cardapio). ESCRITA: pedidos (criar_pedido, mudar_status, cancelar_pedido). Você NÃO consegue ler nem listar pedidos existentes nem dados de clientes. Para criar um pedido é OBRIGATÓRIO informar o nome e o telefone do cliente. Use os nomes exatos do cardápio. Confirme todos os dados com o lojista antes de criar ou cancelar um pedido.' } };
     }
     case 'ping': return { jsonrpc: '2.0', id: m.id, result: {} };
     case 'tools/list': return { jsonrpc: '2.0', id: m.id, result: { tools: STORE_MCP_TOOLS } };

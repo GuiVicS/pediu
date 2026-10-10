@@ -86,7 +86,7 @@ export default function StoreAdmin() {
       <details className="card mt-5 p-4">
         <summary className="cursor-pointer font-semibold">Avançado</summary>
         <div className="mt-4 space-y-3 border-t border-border pt-4">
-          <h2 className="font-semibold">MCP da loja <span className="badge ml-1 bg-muted text-muted-foreground">gerenciar pedidos</span></h2>
+          <h2 className="font-semibold">MCP da loja <span className="badge ml-1 bg-muted text-muted-foreground">cardápio: leitura · pedidos: escrita</span></h2>
           <McpPanel />
         </div>
       </details>

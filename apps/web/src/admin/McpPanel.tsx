@@ -26,9 +26,9 @@ export function McpPanel() {
 
   return (
     <div className="space-y-4 text-sm">
-      <p>Conecte um assistente de IA (Claude, ChatGPT e outros que aceitam MCP) para <b>gerenciar os pedidos da sua loja por conversa</b>: “o que tem em aberto?”, “lance um pedido de 2 calabresas para o João, retirada”, “aceite o pedido 1005”, “cancele o 1007, o cliente desistiu”.</p>
+      <p>Conecte um assistente de IA (Claude, ChatGPT e outros que aceitam MCP) para <b>consultar o seu cardápio e lançar pedidos por conversa</b>: “quais pizzas vocês têm?”, “lance 2 calabresas para o João, telefone (16) 99999-0000, retirada”, “aceite o pedido 1005”, “cancele o 1007, o cliente desistiu”.</p>
       <div className="flex items-start gap-2 rounded-ui-sm bg-amber-500/10 p-3 text-amber-900 dark:text-amber-200"><ShieldAlert size={16} className="mt-0.5 shrink-0" aria-hidden />
-        <span>Quem tiver o token consegue <b>criar, aceitar, avançar e cancelar pedidos</b> da sua loja. Guarde como uma senha e revogue se perder. Ele só <b>lê</b> o cardápio (para montar pedidos) e <b>não</b> altera cardápio, pagamentos, equipe nem configurações. Pedidos criados por ele ficam <b>a receber</b>: o pagamento é registrado por você no PDV.</span></div>
+        <span>Quem tiver o token consegue <b>criar, avançar e cancelar pedidos</b> da sua loja. Guarde como uma senha e revogue se perder. O assistente <b>só lê o cardápio</b> (produtos e coleções); ele <b>não lê pedidos nem dados de clientes</b> e não altera cardápio, pagamentos, equipe nem configurações. Para criar um pedido ele precisa informar <b>nome e telefone</b> do cliente. Os pedidos ficam <b>a receber</b>: o pagamento é registrado por você no PDV.</span></div>
 
       <div><div className="mb-1 font-medium">O que o assistente pode fazer</div>
         <ul className="grid gap-1.5 sm:grid-cols-2">{info?.tools.map((t) => <li key={t.name} className="rounded-ui-xs bg-muted/50 px-2.5 py-1.5"><code className="text-xs font-semibold">{t.name}</code><span className="block text-xs text-muted-foreground">{t.description}</span></li>)}</ul></div>

@@ -55,7 +55,7 @@ Tudo está em `origin/fix/relatorio-testes-1` (cerca de 18 commits sobre a `main
 | **Entregador** | **Montador de rotas**: seleciona várias entregas, ordem sugerida, rota salva, link do Google Maps. |
 | **Domínios** | Corrige o "Erro interno" ao adicionar domínio (faltava permissão no banco). Super admin agora gerencia domínios por loja (adicionar/verificar/remover). |
 | **Alertas (super admin)** | Cada alerta com explicação em português, detalhes e **logs relacionados** (botão *Entender*). |
-| **MCP da loja** | Painel da loja › *Loja e entrega* › **Avançado** › *MCP da loja*: o lojista gera um token para um assistente de IA **gerenciar e criar pedidos** (e só isso). Endpoint `POST /v1/store-mcp` na API. |
+| **MCP da loja** | Painel da loja › *Loja e entrega* › **Avançado** › *MCP da loja*: o lojista gera um token para um assistente de IA. O assistente **só lê o cardápio** (coleções e produtos) e **só escreve em pedidos** (criar com **nome e telefone do cliente obrigatórios**, avançar status, cancelar); não lê pedidos nem dados de clientes e não imprime. Endpoint `POST /v1/store-mcp` na API. |
 
 Novas migrations (em `packages/db/supabase/migrations/`), **nesta ordem**:
 
