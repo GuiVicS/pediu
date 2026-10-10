@@ -51,6 +51,8 @@ const nextNumber = async (q: Q, storeId: string, tenantId: string) =>
 export const orderEvent = (q: Q, o: { orderId: string; storeId: string; tenantId: string }, actorKind: 'customer' | 'staff' | 'system', actorId: string | null, ev: string, data?: unknown) =>
   q`insert into order_events (order_id, store_id, tenant_id, actor_kind, actor_id, event, data) values (${o.orderId}, ${o.storeId}, ${o.tenantId}, ${actorKind}, ${actorId}, ${ev}, ${data === undefined ? null : JSON.stringify(data)}::jsonb)`;
 const event = orderEvent;
+/** Resumo dos itens para a linha do tempo da mesa ("2× Calabresa"): só nome e quantidade, no máximo 30. */
+const summarize = (lines: { name: string; qty: number }[]) => lines.slice(0, 30).map((l) => ({ name: l.name, qty: l.qty }));
 
 export async function insertOrder(q: Q, a: {
   storeId: string; tenantId: string; channel: 'loja' | 'pdv' | 'garcom' | 'ifood' | 'totem'; type: OrderType; lines: NonNullable<Awaited<ReturnType<typeof buildLines>>['lines']>;
@@ -75,7 +77,7 @@ export async function insertOrder(q: Q, a: {
     await q`insert into order_items (order_id, store_id, tenant_id, product_id, name, qty, unit_cents, total_cents, note, addons, print_zone_id)
             values (${o!.id}, ${a.storeId}, ${a.tenantId}, ${l.productId}, ${l.name}, ${l.qty}, ${l.unitCents}, ${l.totalCents}, ${l.note}, ${JSON.stringify(l.addons)}::jsonb, ${l.zoneId})`;
   }
-  await event(q, { orderId: o!.id, storeId: a.storeId, tenantId: a.tenantId }, a.channel === 'loja' || a.channel === 'totem' ? 'customer' : 'staff', a.createdBy, 'created', { channel: a.channel, total: total });
+  await event(q, { orderId: o!.id, storeId: a.storeId, tenantId: a.tenantId }, a.channel === 'loja' || a.channel === 'totem' ? 'customer' : 'staff', a.createdBy, 'created', { channel: a.channel, total: total, table: a.table, items: summarize(a.lines) });
   return { id: o!.id as string, number: o!.number as number, trackingToken: o!.tracking_token as string, totalCents: total };
 }
 
@@ -95,7 +97,7 @@ export async function appendItems(q: Q, o: { id: string; storeId: string; tenant
   const subtotal = o.subtotalCents + add;
   await q`update orders set subtotal_cents = ${subtotal}, total_cents = ${subtotal + o.feeCents - o.discountCents},
           status = case when status in ('pronto') then 'preparo' else status end, ready_at = case when status = 'pronto' then null else ready_at end, bill_requested_at = null where id = ${o.id}`;
-  await event(q, { orderId: o.id, storeId: o.storeId, tenantId: o.tenantId }, actor.kind, actor.id, 'items_added', { added: lines.length, addedCents: add });
+  await event(q, { orderId: o.id, storeId: o.storeId, tenantId: o.tenantId }, actor.kind, actor.id, 'items_added', { added: lines.length, addedCents: add, items: summarize(lines) });
   return { totalCents: subtotal + o.feeCents - o.discountCents, newIds };
 }
 
@@ -229,7 +231,9 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!perms.pedidos && !perms.garcom && !perms.motoboy) return fail(reply, 403, 'forbidden', 'Seu perfil não acessa pedidos.');
     return withTenant(ctx.pools, s.tenantId, async (q) => {
       const rows = await q`select id, number, channel, type, status, customer_name, customer_phone, address, table_number, note, subtotal_cents, fee_cents, discount_cents, total_cents,
-          payment_method, change_for_cents, paid, paid_at, paid_type, payment_mode, cash_received_cents, change_cents, payment_ref, courier_id, guests, bill_requested_at, created_at, accepted_at, ready_at, dispatched_at, delivered_at, cancelled_at, cancel_reason
+          payment_method, change_for_cents, paid, paid_at, paid_type, payment_mode, cash_received_cents, change_cents, payment_ref, courier_id, guests, bill_requested_at, created_at, accepted_at, ready_at, dispatched_at, delivered_at, cancelled_at, cancel_reason,
+          (select u.name from staff_users u where u.id = orders.created_by) as opened_by_name,
+          (select coalesce(jsonb_agg(t.n order by t.n), '[]'::jsonb) from (select distinct u.name as n from order_events e join staff_users u on u.id::text = e.actor_id where e.order_id = orders.id and e.actor_kind = 'staff') t) as staff_names
         from orders where store_id = ${s.storeId}
           and (${qs.open ?? null}::text is null or status not in ('entregue', 'cancelado'))
           and (${qs.status ?? null}::text is null or status = ${qs.status ?? null})
@@ -416,11 +420,19 @@ export function orderRoutes(app: FastifyInstance, ctx: Ctx) {
     return { ok: true, totalCents: out.totalCents, changeCents: out.changeCents };
   });
 
-  // linha do tempo do pedido
+  // linha do tempo do pedido (com o nome de quem fez cada coisa). O garçom enxerga a das mesas.
   app.get(`${S}/:id/events`, { preHandler: staffGuard(ctx) }, async (req, reply) => {
     const s = req.staff!;
     const id = parse(uuid, (req.params as { id: string }).id, reply); if (!id) return;
-    if (!(can(s.role, 'admin.pedidos') || can(s.role, 'pdv'))) return fail(reply, 403, 'forbidden', 'Seu perfil não acessa o histórico.');
-    return { events: await withTenant(ctx.pools, s.tenantId, (q) => q`select at, actor_kind, event, data from order_events where order_id = ${id} and store_id = ${s.storeId} order by id`) };
+    const full = can(s.role, 'admin.pedidos') || can(s.role, 'pdv');
+    if (!full && !can(s.role, 'garcom')) return fail(reply, 403, 'forbidden', 'Seu perfil não acessa o histórico.');
+    const events = await withTenant(ctx.pools, s.tenantId, async (q) => {
+      const [o] = await q`select type from orders where id = ${id} and store_id = ${s.storeId}`;
+      if (!o || (!full && o.type !== 'mesa')) return null;
+      return q`select e.at, e.actor_kind, e.event, e.data, u.name as actor_name, u.role as actor_role
+               from order_events e left join staff_users u on e.actor_kind = 'staff' and u.id::text = e.actor_id and u.store_id = e.store_id
+               where e.order_id = ${id} and e.store_id = ${s.storeId} order by e.id`;
+    });
+    return events ? { events } : fail(reply, 404, 'not_found', 'Pedido não encontrado.');
   });
 }

@@ -233,7 +233,7 @@ test('isolamento: a equipe da loja A não vê, altera nem recebe pedidos da loja
   assert.equal((await adminA.post(`/v1/staff/orders/${idB}/status`, { to: 'preparo' })).status, 404);
   assert.equal((await adminA.post(`/v1/staff/orders/${idB}/pay`, { paymentId: A.payPix })).status, 404);
   assert.equal((await adminA.post(`/v1/staff/orders/${idB}/items`, { lines: [line(A)] })).status, 404);
-  assert.equal((await adminA.get(`/v1/staff/orders/${idB}/events`)).body.events.length, 0);
+  assert.equal((await adminA.get(`/v1/staff/orders/${idB}/events`)).status, 404);   // histórico de pedido de outra loja: não existe para quem pergunta
   const [r] = await env.pools.platform.begin((q) => q`select status, paid from orders where id = ${idB}`);
   assert.deepEqual({ ...r }, { status: 'novo', paid: false });
 });

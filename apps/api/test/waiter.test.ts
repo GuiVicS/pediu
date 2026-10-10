@@ -52,3 +52,32 @@ test('só garçom/caixa mexem na mesa; comanda de delivery e encerrada são recu
   await env.pools.platform.begin((q) => q`update orders set status = 'entregue' where id = ${body.id}`);
   assert.equal((await garcom.post(`/v1/staff/orders/${body.id}/mesa`, { bill: true })).status, 422);
 });
+
+test('histórico da mesa: quem abriu, quem adicionou, quem pediu a conta, e a transferência — com nomes', async () => {
+  const caixa = client(env); await staffLogin(env, caixa, seed, 'balcao');
+  const { body } = await abrir(9, { guests: 2 });                                                     // garçom abre a mesa
+  await caixa.post(`/v1/staff/orders/${body.id}/items`, { lines: [{ productId: seed.prodB, qty: 2, addons: [] }] });   // outra pessoa lança mais
+  await garcom.post(`/v1/staff/orders/${body.id}/mesa`, { bill: true });
+  await garcom.post(`/v1/staff/orders/${body.id}/mesa`, { table: 12 });
+
+  const c = await comanda(body.id);
+  assert.equal(c.opened_by_name, 'Pessoa garcom');                                                    // quem montou a comanda
+  assert.deepEqual(c.staff_names, ['Pessoa balcao', 'Pessoa garcom']);                                // todo mundo que mexeu nela
+
+  const ev = (await garcom.get(`/v1/staff/orders/${body.id}/events`)).body.events as { event: string; actor_name: string | null; data: any }[];
+  assert.deepEqual(ev.map((e) => e.event), ['created', 'items_added', 'bill_requested', 'table_moved']);
+  assert.deepEqual(ev.map((e) => e.actor_name), ['Pessoa garcom', 'Pessoa balcao', 'Pessoa garcom', 'Pessoa garcom']);
+  assert.deepEqual(ev[0]!.data.items, [{ name: 'Calabresa', qty: 1 }]); assert.equal(ev[0]!.data.table, 9);
+  assert.deepEqual(ev[1]!.data.items, [{ name: 'Marguerita', qty: 2 }]);
+  assert.deepEqual(ev[3]!.data, { from: 9, to: 12 });
+});
+
+test('histórico: garçom vê o das mesas, não o de delivery; sem login não vê', async () => {
+  const pdv = client(env); await staffLogin(env, pdv, seed, 'balcao');
+  const entrega = await pdv.post('/v1/staff/orders', { type: 'delivery', customerName: 'Ana', phone: '16999990000', address: 'Rua A, 1', zoneId: seed.zone, lines: [{ productId: seed.prod, qty: 1, addons: [] }] });
+  assert.equal(entrega.status, 201);
+  assert.equal((await garcom.get(`/v1/staff/orders/${entrega.body.id}/events`)).status, 404);        // delivery: só o caixa/painel
+  assert.equal((await pdv.get(`/v1/staff/orders/${entrega.body.id}/events`)).status, 200);
+  const { body } = await abrir(15);
+  assert.equal((await client(env).get(`/v1/staff/orders/${body.id}/events`)).status, 401);
+});
