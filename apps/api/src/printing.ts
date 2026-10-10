@@ -183,6 +183,7 @@ export function printingRoutes(app: FastifyInstance, ctx: Ctx) {
     const [r] = await ctx.pools.app.begin((q) => q`select * from app.agent_pair(${hashToken(b.code)}, ${t.hash}, ${b.name}, ${b.platform}, ${b.version})`);
     if (!r) return fail(reply, 400, 'invalid_code', 'Código inválido ou expirado. Gere outro no painel.');
     await withTenant(ctx.pools, r.tenant_id, (q) => audit(q, { actorKind: 'system', tenantId: r.tenant_id, storeId: r.store_id, action: 'print.agent_paired', ip: req.ip, meta: { agentId: r.agent_id, name: b.name } }));
+    bus.emit(r.store_id, { type: 'agent', agentId: r.agent_id, online: false });   // o painel recarrega a lista na hora
     return reply.status(201).send({ token: t.token, agentId: r.agent_id, storeId: r.store_id });
   });
 

@@ -33,6 +33,8 @@ export default function PrintAdmin() {
 
   const load = useCallback(async () => setOv(await get<Overview>('/v1/staff/print/overview')), []);
   useEffect(() => { void load(); }, [load]);
+  const agentCount = ov?.agents.length;
+  useEffect(() => { setPairing(null); }, [agentCount]);                           // agente novo pareado: fecha o código
   useStream((e) => { if (e.type === 'print' || e.type === 'agent') void load(); }, load, 10_000);
   if (!ov || !zones.ready) return <Spinner />;
 

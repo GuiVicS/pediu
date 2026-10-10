@@ -60,7 +60,7 @@ export default function SaleView({ menu, draft, setDraft, onCheckout }: { menu: 
           <input className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" placeholder="Buscar produtos, categorias ou códigos…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar produtos" />
           {q && <button onClick={() => setQ('')} aria-label="Limpar busca"><X size={16} className="text-muted-foreground" /></button>}
         </label>
-        <div className="grid min-h-0 flex-1 grid-cols-2 content-start gap-3 overflow-y-auto pr-1 sm:grid-cols-3 xl:grid-cols-4">
+        <div className="grid min-h-0 flex-1 grid-cols-2 auto-rows-max content-start gap-3 overflow-y-auto pr-1 sm:grid-cols-3 xl:grid-cols-4">
           {products.map((p) => {
             const n = draft.lines.filter((l) => l.productId === p.id).reduce((s, l) => s + l.qty, 0);
             return (
