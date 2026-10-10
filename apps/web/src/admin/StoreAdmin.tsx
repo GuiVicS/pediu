@@ -7,6 +7,7 @@ import { Field, Modal, Toggle } from '@/ui/kit';
 import { PageHeader, useToast } from './AdminUI';
 import { PaymentMethodsSection } from './PaymentMethods';
 import { TotemsSection } from './TotemsSection';
+import { McpPanel } from './McpPanel';
 
 type ZDraft = Omit<DeliveryZone, 'id'> & { id?: string };
 
@@ -81,6 +82,14 @@ export default function StoreAdmin() {
 
       <PaymentMethodsSection />
       <TotemsSection />
+
+      <details className="card mt-5 p-4">
+        <summary className="cursor-pointer font-semibold">Avançado</summary>
+        <div className="mt-4 space-y-3 border-t border-border pt-4">
+          <h2 className="font-semibold">MCP da loja <span className="badge ml-1 bg-muted text-muted-foreground">gerenciar pedidos</span></h2>
+          <McpPanel />
+        </div>
+      </details>
 
       <Modal open={!!zone} onClose={() => setZone(null)} title={zone?.id ? 'Editar região' : 'Nova região'}
         footer={<><button className="btn-ghost" onClick={() => setZone(null)}><X size={14} /> Cancelar</button><button className="btn" disabled={!zone?.name.trim()} onClick={async () => { if (zone) { await zones.save(zone); setZone(null); } }}><Save size={14} /> Salvar</button></>}>

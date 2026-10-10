@@ -16,6 +16,7 @@ import { customerRoutes } from './customers.js';
 import { ifoodRoutes } from './ifood.js';
 import { orderRoutes } from './orders.js';
 import { courierRoutes } from './courierRoutes.js';
+import { storeMcpRoutes } from './storeMcp.js';
 import { paymentRoutes } from './payments.js';
 import { pdvRoutes } from './pdv.js';
 import { printingRoutes } from './printing.js';
@@ -82,6 +83,7 @@ export function buildApp(ctx: Ctx, opts: { trustProxy?: boolean; logger?: boolea
   staffRoutes(app, ctx);
   orderRoutes(app, ctx);
   courierRoutes(app, ctx);
+  storeMcpRoutes(app, ctx);
   customerRoutes(app, ctx);
   downloadRoutes(app);
   aiSettingsRoutes(app, ctx);
