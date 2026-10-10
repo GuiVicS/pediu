@@ -5,6 +5,7 @@ import { alertRoutes, logRoutes } from './alerts.js';
 import { analyticsRoutes, staffDashboardRoutes } from './analytics.js';
 import { aiSettingsRoutes } from './aiConfig.js';
 import { mailSettingsRoutes } from './mailConfig.js';
+import { downloadRoutes } from './downloads.js';
 import { authRoutes } from './auth.js';
 import { bannerRoutes } from './banners.js';
 import { billingRoutes } from './billing.js';
@@ -80,6 +81,7 @@ export function buildApp(ctx: Ctx, opts: { trustProxy?: boolean; logger?: boolea
   staffRoutes(app, ctx);
   orderRoutes(app, ctx);
   customerRoutes(app, ctx);
+  downloadRoutes(app);
   aiSettingsRoutes(app, ctx);
   if (ctx.mail) mailSettingsRoutes(app, ctx, ctx.mail);
   bannerRoutes(app, ctx);

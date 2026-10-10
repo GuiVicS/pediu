@@ -28,6 +28,8 @@ class Hub {
   count() { return this.conns.size; }
 }
 export const hub = new Hub();
+/** Quem está esperando a lista de impressoras que um agente acabou de mandar (botão "Puxar impressoras"). */
+const discoverWaiters = new Map<string, ((list: unknown[]) => void)[]>();
 
 // ---------------- geração dos jobs ----------------
 const EVENT_NAMESPACE: Record<string, string> = { novo: 'chegada', preparo: 'chegada' };   // criado já em preparo não imprime duas vezes
@@ -173,6 +175,7 @@ async function handleAck(ctx: Ctx, tenantId: string, storeId: string, agentId: s
 }
 
 const helloSchema = z.object({ type: z.literal('hello'), version: z.string().max(40).optional(), platform: z.string().max(40).optional(), printers: z.array(z.object({ name: z.string().max(120) }).passthrough()).max(50).default([]) });
+const printersSchema = z.object({ type: z.literal('printers'), printers: z.array(z.object({ name: z.string().max(120) }).passthrough()).max(50).default([]) });
 const ackSchema = z.object({ type: z.literal('ack'), id: z.string().uuid(), ok: z.boolean(), error: z.string().max(500).optional() });
 
 export function printingRoutes(app: FastifyInstance, ctx: Ctx) {
@@ -205,6 +208,12 @@ export function printingRoutes(app: FastifyInstance, ctx: Ctx) {
           if (m?.type === 'hello') {
             const h = helloSchema.parse(m);
             await withTenant(ctx.pools, a.tenant_id, (q) => q`update print_agents set version = ${h.version ?? null}, platform = ${h.platform ?? null}, discovered = ${JSON.stringify(h.printers)}::jsonb, last_seen_at = now() where id = ${a.agent_id}`);
+          } else if (m?.type === 'printers') {
+            const l = printersSchema.parse(m).printers;
+            await withTenant(ctx.pools, a.tenant_id, (q) => q`update print_agents set discovered = ${JSON.stringify(l)}::jsonb, last_seen_at = now() where id = ${a.agent_id}`);
+            for (const done of discoverWaiters.get(a.agent_id) ?? []) done(l);
+            discoverWaiters.delete(a.agent_id);
+            bus.emit(a.store_id, { type: 'agent', agentId: a.agent_id, online: true });
           } else if (m?.type === 'ack') await handleAck(ctx, a.tenant_id, a.store_id, a.agent_id, ackSchema.parse(m));
         } catch (e) { ctx.telemetry?.log({ level: 'warn', service: 'print', event: 'print.agent_bad_message', message: String((e as Error).message).slice(0, 200), storeId: a.store_id }); }
       });
@@ -241,6 +250,22 @@ export function printingRoutes(app: FastifyInstance, ctx: Ctx) {
       await q`insert into print_pairing_codes (code_hash, store_id, tenant_id, expires_at) values (${hashToken(code)}, ${s.storeId}, ${s.tenantId}, ${expires.toISOString()})`;
     });
     return { code, expiresAt: expires.toISOString() };
+  });
+
+  // "Puxar impressoras": pede ao agente (que está no computador da loja) a lista atual e devolve na hora
+  app.post(`${P}/agents/:id/discover`, { preHandler: adm, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const s = req.staff!; const id = parse(uuid, (req.params as { id: string }).id, reply); if (!id) return;
+    const [a] = await withTenant(ctx.pools, s.tenantId, (q) => q`select id from print_agents where id = ${id} and store_id = ${s.storeId} and revoked_at is null`);
+    if (!a) return fail(reply, 404, 'not_found', 'Agente não encontrado.');
+    const conn = hub.get(id);
+    if (!conn) return fail(reply, 409, 'agent_offline', 'O agente está desconectado. Abra o Pediu Agente no computador das impressoras e tente de novo.');
+    const printers = await new Promise<unknown[] | null>((resolve) => {
+      const t = setTimeout(() => { discoverWaiters.set(id, (discoverWaiters.get(id) ?? []).filter((f) => f !== done)); resolve(null); }, 8000);
+      const done = (l: unknown[]) => { clearTimeout(t); resolve(l); };
+      discoverWaiters.set(id, [...(discoverWaiters.get(id) ?? []), done]);
+      try { conn.socket.send(JSON.stringify({ type: 'discover' })); } catch { clearTimeout(t); resolve(null); }
+    });
+    return printers ? { printers } : fail(reply, 504, 'agent_timeout', 'O agente não respondeu. Se ele foi instalado antes desta versão, baixe o agente novo.');
   });
 
   app.delete(`${P}/agents/:id`, { preHandler: adm }, async (req, reply) => {

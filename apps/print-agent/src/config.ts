@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -14,6 +14,8 @@ export async function saveConfig(c: AgentConfig, path = configPath()) {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, JSON.stringify(c, null, 2), { mode: 0o600 });    // o token vale como senha: só o dono do arquivo lê
 }
+
+export const deleteConfig = (path = configPath()) => rm(path, { force: true });
 
 /** Últimos jobs impressos. Se o servidor reenviar um job cuja confirmação se perdeu, só confirmamos de novo: nunca imprimimos em dobro. */
 export class PrintedLog {
