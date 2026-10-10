@@ -27,7 +27,7 @@ test('painel: o lojista gera o token (aparece uma vez), lista sem segredos, só 
   const list = (await admin.get('/v1/staff/mcp')).body;
   assert.equal(list.tokens.length, 1); assert.equal(list.tokens[0].name, 'Claude da loja'); assert.deepEqual(list.tokens[0].scopes, ['orders']);
   assert.equal(JSON.stringify(list).includes(TOKEN), false); assert.equal('token_hash' in list.tokens[0], false);     // o segredo nunca volta
-  assert.deepEqual(list.tools.map((t: any) => t.name), ['consultar_cardapio', 'criar_pedido', 'listar_pedidos', 'ver_pedido', 'mudar_status', 'cancelar_pedido', 'reimprimir_pedido']);
+  assert.deepEqual(list.tools.map((t: any) => t.name), ['consultar_cardapio', 'criar_pedido', 'listar_pedidos', 'ver_pedido', 'mudar_status', 'cancelar_pedido']);
   assert.equal((await adminB.get('/v1/staff/mcp')).body.tokens.length, 0);                                              // outra loja não vê
   for (let i = 0; i < 4; i++) assert.equal((await admin.post('/v1/staff/mcp/tokens', { name: `t${i}` })).status, 201);
   assert.equal((await admin.post('/v1/staff/mcp/tokens', { name: 'sexto' })).status, 422);                              // limite
@@ -47,7 +47,7 @@ test('protocolo MCP: initialize, notificações, ping, lista de ferramentas e er
   assert.equal((await rpc({ jsonrpc: '2.0', method: 'notifications/initialized' })).status, 202);                        // notificação não tem resposta
   assert.deepEqual((await rpc({ jsonrpc: '2.0', id: 3, method: 'ping' })).body, { jsonrpc: '2.0', id: 3, result: {} });
   const tools = (await rpc({ jsonrpc: '2.0', id: 4, method: 'tools/list' })).body.result.tools;
-  assert.equal(tools.length, 7); assert.ok(tools.every((t: any) => t.inputSchema.type === 'object' && t.description.length > 20));
+  assert.equal(tools.length, 6); assert.ok(tools.every((t: any) => t.inputSchema.type === 'object' && t.description.length > 20));
   assert.equal((await rpc({ jsonrpc: '2.0', id: 5, method: 'resources/list' })).body.error.code, -32601);
   const batch = await rpc([{ jsonrpc: '2.0', id: 6, method: 'ping' }, { jsonrpc: '2.0', method: 'notifications/initialized' }, { jsonrpc: '2.0', id: 7, method: 'ping' }]);
   assert.deepEqual(batch.body.map((x: any) => x.id), [6, 7]);
@@ -90,17 +90,14 @@ test('gerenciar pedidos: listar, ver, avançar etapas, recusar saltos, cancelar 
   assert.equal(outro.status, 'novo');                                                                                   // e a outra loja não foi tocada
 });
 
-test('reimprimir: sem impressora configurada explica o que falta; com impressora, enfileira o cupom', async () => {
+test('o MCP não oferece impressão: a ferramenta de reimprimir não existe e chamá-la é recusado', async () => {
   const o = await newOrder(admin, A);
+  const tools = (await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' })).body.result.tools.map((t: any) => t.name);
+  assert.equal(tools.some((n: string) => /imprim|print/i.test(n)), false);
   const r = await call('reimprimir_pedido', { numero: o.number });
-  assert.equal(r.isError, true); assert.match(r.text, /Nada para imprimir/);
-  await env.pools.platform.begin(async (q) => {
-    const [zone] = await q`select id from print_zones where store_id = ${A.storeId} limit 1`;
-    const [pr] = await q`insert into printers (store_id, tenant_id, name, connection, address) values (${A.storeId}, ${A.tenantId}, 'Cozinha', 'rede', '192.168.0.50:9100') returning id`;
-    await q`insert into zone_printers (store_id, tenant_id, zone_id, printer_id, priority, copies) values (${A.storeId}, ${A.tenantId}, ${zone!.id}, ${pr!.id}, 0, 1)`;
-  });
-  const ok = await call('reimprimir_pedido', { numero: o.number });
-  assert.equal(ok.isError, false); assert.match(data(ok).mensagem, /enviado para impressão/);
+  assert.equal(r.isError, true); assert.match(r.text, /Ferramenta desconhecida/);
+  const [n] = await env.pools.platform.begin((q) => q`select count(*)::int as n from print_jobs where order_id = ${o.id} and kind = 'reimpressao'`);
+  assert.equal(n!.n, 0);                                                                                               // nada foi enfileirado
 });
 
 test('criar pedido pelo MCP: consulta o cardápio, resolve nomes (sem ligar para acento), entrega, mesa, pagamento presencial', async () => {

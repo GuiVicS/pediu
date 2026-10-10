@@ -5,13 +5,12 @@ import { generateToken, getOpenStatus, hashToken } from '@pediu/shared';
 import type { Ctx } from './context.js';
 import { audit, fail, parse } from './http.js';
 import { changeOrderStatus, createStaffOrder, staffOrderIn } from './orders.js';
-import { enqueuePrint } from './printing.js';
 import { staffGuard } from './staff.js';
 import { loadMenu } from './menu.js';
 
 /**
  * MCP da loja: deixa um assistente de IA (Claude, ChatGPT etc.) GERENCIAR OS PEDIDOS da própria loja.
- * Escopo único: pedidos (consultar o cardápio só para montar o pedido, criar, listar, ver, mudar status, cancelar, reimprimir).
+ * Escopo único: pedidos (consultar o cardápio só para montar o pedido, criar, listar, ver, mudar status, cancelar).
  * Não altera cardápio, pagamentos, equipe nem configurações; não recebe pagamento (isso fica com o PDV).
  * O token é gerado pelo lojista em Loja › Avançado e vale só para a loja dele. Protocolo MCP "Streamable HTTP" sem estado,
  * implementado aqui mesmo (JSON-RPC) para rodar dentro da API, com o mesmo isolamento por loja (RLS) do resto do sistema.
@@ -26,7 +25,7 @@ const TYPE_LABEL: Record<string, string> = { delivery: 'entrega', retirada: 'ret
 export const STORE_MCP_TOOLS = [
   { name: 'consultar_cardapio', description: 'Somente leitura. Mostra o cardápio da loja (categorias, produtos com preço e disponibilidade, adicionais), as regiões de entrega com taxa e as formas de pagamento. Use antes de criar_pedido para usar os nomes exatos.',
     inputSchema: { type: 'object', properties: { busca: { type: 'string', description: 'opcional: filtra produtos pelo nome' } }, additionalProperties: false } },
-  { name: 'criar_pedido', description: 'Lança um pedido novo na loja (retirada/balcão, entrega ou mesa). Os itens e adicionais vão pelo NOME, como em consultar_cardapio. O pedido nasce como "novo", vai para a cozinha/impressoras e fica A RECEBER: o pagamento é registrado pelo lojista no PDV. Confirme os dados com o lojista antes de criar.',
+  { name: 'criar_pedido', description: 'Lança um pedido novo na loja (retirada/balcão, entrega ou mesa). Os itens e adicionais vão pelo NOME, como em consultar_cardapio. O pedido nasce como "novo", entra no fluxo normal da loja e fica A RECEBER: o pagamento é registrado pelo lojista no PDV. Confirme os dados com o lojista antes de criar.',
     inputSchema: { type: 'object', properties: {
       tipo: { type: 'string', enum: ['retirada', 'delivery', 'mesa'] },
       cliente: { type: 'string', description: 'nome do cliente (obrigatório na entrega)' }, telefone: { type: 'string' },
@@ -46,8 +45,6 @@ export const STORE_MCP_TOOLS = [
     inputSchema: { type: 'object', properties: { numero: { type: 'integer' }, para: { type: 'string', enum: ['preparo', 'pronto', 'saiu', 'entregue'] } }, required: ['numero', 'para'], additionalProperties: false } },
   { name: 'cancelar_pedido', description: 'Cancela um pedido que ainda não foi entregue. O motivo é obrigatório e fica registrado. Atenção: não devolve dinheiro (estorno é feito pelo lojista no painel).',
     inputSchema: { type: 'object', properties: { numero: { type: 'integer' }, motivo: { type: 'string', maxLength: 200 } }, required: ['numero', 'motivo'], additionalProperties: false } },
-  { name: 'reimprimir_pedido', description: 'Manda imprimir de novo o cupom do pedido nas impressoras das zonas (cozinha, bar, caixa).',
-    inputSchema: { type: 'object', properties: { numero: { type: 'integer' } }, required: ['numero'], additionalProperties: false } },
 ] as const;
 
 interface Caller { tokenId: string; tokenName: string; storeId: string; tenantId: string; ip: string }
@@ -145,7 +142,7 @@ async function callTool(ctx: Ctx, c: Caller, name: string, raw: unknown): Promis
       const input = staffOrderIn.parse({ type: a.tipo, customerName: a.cliente, phone: a.telefone, address: a.endereco, zoneId, table: a.mesa, guests: a.pessoas, note: a.observacao, paymentId, receiveNow: false, lines });
       const r = await createStaffOrder(ctx, { tenantId: c.tenantId, storeId: c.storeId, staffId: null, actorId: actor.actorId }, input);
       if (!r.ok) return bad(r.message);
-      return ok({ ok: true, numero: r.number, total: money(r.totalCents), status: 'novo', mensagem: `Pedido #${r.number} criado (${money(r.totalCents)}). Já foi para a cozinha/impressoras. O pagamento fica A RECEBER: o lojista registra no PDV.` });
+      return ok({ ok: true, numero: r.number, total: money(r.totalCents), status: 'novo', mensagem: `Pedido #${r.number} criado (${money(r.totalCents)}). Já entrou no fluxo da loja. O pagamento fica A RECEBER: o lojista registra no PDV.` });
     }
     case 'listar_pedidos': {
       const a = args.listar.parse(raw ?? {});
@@ -187,13 +184,6 @@ async function callTool(ctx: Ctx, c: Caller, name: string, raw: unknown): Promis
       if (!o) return bad(`Pedido #${a.numero} não encontrado nesta loja.`);
       const r = await changeOrderStatus(ctx, actor, o.id as string, 'cancelado', `${a.motivo} (via MCP)`);
       return r.ok ? ok({ ok: true, mensagem: `Pedido #${a.numero} cancelado.`, aviso: r.warning ?? 'Se o cliente já pagou online, o estorno é feito pelo lojista no painel.' }) : bad(r.message);
-    }
-    case 'reimprimir_pedido': {
-      const a = args.numero.parse(raw ?? {}); const o = await find(a.numero);
-      if (!o) return bad(`Pedido #${a.numero} não encontrado nesta loja.`);
-      const n = await enqueuePrint(ctx, { tenantId: c.tenantId, storeId: c.storeId, orderId: o.id as string, kind: 'reimpressao', manual: true });
-      await withTenant(ctx.pools, c.tenantId, (q) => audit(q, { actorKind: 'staff', actorId: actor.actorId, tenantId: c.tenantId, storeId: c.storeId, action: 'print.reprint', ip: c.ip, meta: { orderId: o.id, via: 'mcp' } }));
-      return n ? ok({ ok: true, mensagem: `Pedido #${a.numero} enviado para impressão (${n} cupom/cupons).` }) : bad('Nada para imprimir: confira se as zonas têm impressora e itens.');
     }
     default: return bad(`Ferramenta desconhecida: ${name}`);
   }
