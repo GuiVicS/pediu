@@ -179,7 +179,7 @@ export function releaseRoutes(app: FastifyInstance, ctx: Ctx, dns: DnsLookup = r
     if (!d) return fail(reply, 404, 'not_found', 'Domínio não encontrado.');
     if (d.verified_at) return { verified: true };
     let ok = false, why = '';
-    try { ok = (await dns.txt(`_pediu-verify.${d.hostname}`)).some((r) => r.join('') === d.verify_token); if (!ok) why = `Não encontrei o registro TXT _pediu-verify.${d.hostname} com o valor esperado. A propagação do DNS pode levar alguns minutos.`; }
+    try { ok = (await (ctx.dns ?? dns).txt(`_pediu-verify.${d.hostname}`)).some((r) => r.join('') === d.verify_token); if (!ok) why = `Não encontrei o registro TXT _pediu-verify.${d.hostname} com o valor esperado. A propagação do DNS pode levar alguns minutos.`; }
     catch { why = `O registro TXT _pediu-verify.${d.hostname} ainda não existe no DNS.`; }
     await withTenant(ctx.pools, s.tenantId, async (q) => {
       await q`update store_domains set verified_at = ${ok ? ctx.clock.now().toISOString() : null}, verify_error = ${ok ? null : why}, verified_checked_at = now() where id = ${id}`;
@@ -193,6 +193,65 @@ export function releaseRoutes(app: FastifyInstance, ctx: Ctx, dns: DnsLookup = r
     const n = await withTenant(ctx.pools, s.tenantId, async (q) => {
       const r = await q`delete from store_domains where id = ${id} and store_id = ${s.storeId} and kind = 'custom' returning hostname`;
       if (r.length) await audit(q, { actorKind: 'staff', actorId: s.staffId, tenantId: s.tenantId, storeId: s.storeId, action: 'domain.removed', ip: req.ip, meta: { hostname: r[0]!.hostname } });
+      return r.length;
+    });
+    return n ? { ok: true } : fail(reply, 404, 'not_found', 'Domínio próprio não encontrado (o domínio padrão não pode ser removido).');
+  });
+
+  // ---- super admin: domínios de qualquer loja (adicionar, verificar, remover) ----
+  const PD = '/v1/platform/stores/:id/domains';
+  const storeRow = async (q: Q, id: string) => (await q`select id, tenant_id, slug from stores where id = ${id}`)[0];
+
+  app.get(PD, { preHandler: guard(ctx) }, async (req, reply) => {
+    const id = parse(uuid, (req.params as { id: string }).id, reply); if (!id) return;
+    const out = await withPlatform(ctx.pools, async (q) => {
+      if (!(await storeRow(q, id))) return null;
+      return (await q`select id, hostname, kind, verified_at, verify_token, verify_error from store_domains where store_id = ${id} order by created_at`).map(withInstructions);
+    });
+    return out ? { domains: out } : fail(reply, 404, 'not_found', 'Loja não encontrada.');
+  });
+
+  app.post(PD, { preHandler: guard(ctx, { stepUp: true }) }, async (req, reply) => {
+    const id = parse(uuid, (req.params as { id: string }).id, reply); if (!id) return;
+    const b = parse(z.object({ hostname: z.string().trim().toLowerCase().regex(HOST_RE, 'Domínio inválido'), markVerified: z.boolean().default(false) }), req.body, reply); if (!b) return;
+    if (b.hostname === ctx.baseDomain || b.hostname.endsWith(`.${ctx.baseDomain}`)) return fail(reply, 422, 'reserved', `Domínios de ${ctx.baseDomain} são gerenciados pela plataforma.`);
+    try {
+      const out = await withPlatform(ctx.pools, async (q) => {
+        const st = await storeRow(q, id); if (!st) return 'store' as const;
+        const [n] = await q`select count(*)::int as n from store_domains where store_id = ${id} and kind = 'custom'`;
+        if (n!.n >= 5) return 'limit' as const;
+        const [row] = await q`insert into store_domains (tenant_id, store_id, hostname, kind, verify_token, verified_at) values (${st.tenant_id}, ${id}, ${b.hostname}, 'custom', ${randomBytes(16).toString('hex')}, ${b.markVerified ? ctx.clock.now().toISOString() : null})
+                              returning id, hostname, kind, verified_at, verify_token, verify_error`;
+        await audit(q, { actorKind: 'superadmin', actorId: req.session!.adminId, tenantId: st.tenant_id, storeId: id, action: 'domain.added', ip: req.ip, meta: { hostname: b.hostname, byPlatform: true, markedVerified: b.markVerified } });
+        return row!;
+      });
+      if (out === 'store') return fail(reply, 404, 'not_found', 'Loja não encontrada.');
+      return out === 'limit' ? fail(reply, 422, 'limit', 'Máximo de 5 domínios próprios por loja.') : reply.status(201).send(withInstructions(out));
+    } catch (e) { if ((e as { code?: string }).code === '23505') return fail(reply, 409, 'taken', 'Este domínio já está em uso.'); throw e; }
+  });
+
+  app.post(`${PD}/:domainId/verify`, { preHandler: guard(ctx), config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const { id: sid, domainId } = req.params as { id: string; domainId: string };
+    const storeId = parse(uuid, sid, reply); if (!storeId) return; const did = parse(uuid, domainId, reply); if (!did) return;
+    const d = await withPlatform(ctx.pools, async (q) => (await q`select id, hostname, verified_at, verify_token, tenant_id from store_domains where id = ${did} and store_id = ${storeId} and kind = 'custom'`)[0]);
+    if (!d) return fail(reply, 404, 'not_found', 'Domínio não encontrado.');
+    if (d.verified_at) return { verified: true };
+    let ok = false, why = '';
+    try { ok = (await (ctx.dns ?? dns).txt(`_pediu-verify.${d.hostname}`)).some((r) => r.join('') === d.verify_token); if (!ok) why = `Não encontrei o registro TXT _pediu-verify.${d.hostname} com o valor esperado. A propagação do DNS pode levar alguns minutos.`; }
+    catch { why = `O registro TXT _pediu-verify.${d.hostname} ainda não existe no DNS.`; }
+    await withPlatform(ctx.pools, async (q) => {
+      await q`update store_domains set verified_at = ${ok ? ctx.clock.now().toISOString() : null}, verify_error = ${ok ? null : why}, verified_checked_at = now() where id = ${did}`;
+      if (ok) await audit(q, { actorKind: 'superadmin', actorId: req.session!.adminId, tenantId: d.tenant_id, storeId, action: 'domain.verified', ip: req.ip, meta: { hostname: d.hostname, byPlatform: true } });
+    });
+    return ok ? { verified: true } : fail(reply, 422, 'not_verified', why);
+  });
+
+  app.delete(`${PD}/:domainId`, { preHandler: guard(ctx, { stepUp: true }) }, async (req, reply) => {
+    const { id: sid, domainId } = req.params as { id: string; domainId: string };
+    const storeId = parse(uuid, sid, reply); if (!storeId) return; const did = parse(uuid, domainId, reply); if (!did) return;
+    const n = await withPlatform(ctx.pools, async (q) => {
+      const r = await q`delete from store_domains where id = ${did} and store_id = ${storeId} and kind = 'custom' returning hostname, tenant_id`;
+      if (r.length) await audit(q, { actorKind: 'superadmin', actorId: req.session!.adminId, tenantId: r[0]!.tenant_id, storeId, action: 'domain.removed', ip: req.ip, meta: { hostname: r[0]!.hostname, byPlatform: true } });
       return r.length;
     });
     return n ? { ok: true } : fail(reply, 404, 'not_found', 'Domínio próprio não encontrado (o domínio padrão não pode ser removido).');

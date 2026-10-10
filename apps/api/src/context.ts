@@ -21,6 +21,8 @@ export interface Ctx {
   /** Configuração de IA em tempo de execução (painel do super admin > variáveis de ambiente). `llm`/`transcriber` acima têm prioridade (testes). */
   ai?: import('./aiConfig.js').AiRuntime;
   transcriber?: import('./llm.js').Transcriber;
+  /** Consulta de DNS (verificação de domínio próprio). Os testes injetam um falso. */
+  dns?: { txt(name: string): Promise<string[][]> };
   stripe?: import('./stripe.js').StripeClient;
   telemetry?: import('./telemetry.js').Telemetry;
   notifier?: import('./alerts.js').Notifier;
