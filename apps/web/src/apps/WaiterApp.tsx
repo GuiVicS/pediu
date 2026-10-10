@@ -196,7 +196,7 @@ function TableView({ table, current, total, comanda, orders, onBack, onAdd, onMo
                   </div>))}
               </div>))}
           </div>
-          <TableHistory orderId={current.id} version={`${current.items.length}|${current.status}|${current.bill_requested_at ?? ''}|${current.table_number ?? ''}|${current.paid}`} />
+          <TableHistory orderId={current.id} title={`Histórico da comanda #${current.number}`} version={`${current.items.length}|${current.status}|${current.bill_requested_at ?? ''}|${current.table_number ?? ''}|${current.paid}`} />
           <div className="grid grid-cols-2 gap-2">
             {current.bill_requested_at
               ? <button className="btn-ghost !py-3" disabled={act.busy} onClick={() => bill(false)}><X size={16} /> Cancelar conta</button>

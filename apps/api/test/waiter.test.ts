@@ -81,3 +81,16 @@ test('histórico: garçom vê o das mesas, não o de delivery; sem login não v�
   const { body } = await abrir(15);
   assert.equal((await client(env).get(`/v1/staff/orders/${body.id}/events`)).status, 401);
 });
+
+test('o histórico é da comanda, não da mesa: outro cliente na mesma mesa começa com histórico limpo', async () => {
+  const caixa = client(env); await staffLogin(env, caixa, seed, 'balcao');
+  const a = await abrir(18);                                                                          // 1º cliente
+  await garcom.post(`/v1/staff/orders/${a.body.id}/mesa`, { bill: true });
+  assert.equal((await caixa.post(`/v1/staff/orders/${a.body.id}/status`, { to: 'cancelado', reason: 'cliente saiu' })).status, 200);   // comanda encerrada, mesa livre
+  const b = await abrir(18);                                                                          // 2º cliente, mesma mesa
+  assert.equal(b.status, 201); assert.notEqual(b.body.id, a.body.id);
+  const evB = (await garcom.get(`/v1/staff/orders/${b.body.id}/events`)).body.events as { event: string }[];
+  assert.deepEqual(evB.map((e) => e.event), ['created']);                                             // nada da comanda anterior
+  const evA = (await caixa.get(`/v1/staff/orders/${a.body.id}/events`)).body.events as { event: string }[];
+  assert.deepEqual(evA.map((e) => e.event), ['created', 'bill_requested', 'status:cancelado']);       // e a anterior continua guardada
+});

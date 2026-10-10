@@ -90,7 +90,7 @@ export default function OrdersView({ o, selectedId, onSelect, onReceive }: { o: 
                 {sel.discount_cents > 0 && <div className="flex justify-between text-emerald-700"><span>Desconto</span><span>− {brlc(sel.discount_cents)}</span></div>}
                 <div className="flex justify-between pt-1 text-lg font-extrabold"><span>Total</span><span className="text-primary">{brlc(sel.total_cents)}</span></div>
               </div>
-              <TableHistory orderId={sel.id} title={sel.type === 'mesa' ? 'Histórico da mesa' : 'Histórico do pedido'} version={`${sel.items.length}|${sel.status}|${sel.paid}|${sel.bill_requested_at ?? ''}|${sel.table_number ?? ''}`} />
+              <TableHistory orderId={sel.id} title={sel.type === 'mesa' ? `Histórico da comanda #${sel.number}` : `Histórico do pedido #${sel.number}`} version={`${sel.items.length}|${sel.status}|${sel.paid}|${sel.bill_requested_at ?? ''}|${sel.table_number ?? ''}`} />
               <div className="flex flex-wrap items-center gap-2 text-sm"><PaidChip paid={sel.paid} />
                 <span className="text-muted-foreground">{sel.paid ? `${sel.paid_type ? PAY_LABEL[sel.paid_type] : sel.payment_method}${sel.payment_mode ? ` · ${sel.payment_mode === 'tela' ? 'na tela' : 'externo'}` : ''}${sel.payment_ref ? ` · aut. ${sel.payment_ref}` : ''}${sel.change_cents ? ` · troco ${brlc(sel.change_cents)}` : ''}` : sel.payment_method ? `Forma prevista: ${sel.payment_method}` : 'Ainda não recebido'}</span></div>
               {sel.status === 'cancelado' && sel.cancel_reason && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">Cancelado: {sel.cancel_reason}</p>}

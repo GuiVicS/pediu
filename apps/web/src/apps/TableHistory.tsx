@@ -7,7 +7,7 @@ import { describeEvent, type TableEvent } from './tableHistory';
 const hour = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
 /** Histórico de atividades da mesa: quem abriu, quem adicionou o quê, conta, transferência, pagamento. `version` muda quando a comanda muda (recarrega). */
-export function TableHistory({ orderId, version, title = 'Histórico da mesa' }: { orderId: string; version: string; title?: string }) {
+export function TableHistory({ orderId, version, title = 'Histórico da comanda' }: { orderId: string; version: string; title?: string }) {
   const [open, setOpen] = useState(false);
   const [events, setEvents] = useState<TableEvent[] | null>(null);
   const [error, setError] = useState(false);
