@@ -62,7 +62,9 @@ export function collectionRoutes(app: FastifyInstance, ctx: Ctx) {
     const s = req.staff!;
     return withTenant(ctx.pools, s.tenantId, async (q) => {
       const [cfg] = await q`select data->'tables' as tables from store_settings where store_id = ${s.storeId}`;
-      return { ...(await loadMenu(q, s.storeId)), tables: Number(cfg?.tables ?? 20) };   // mapa de mesas do garçom
+      const gws = await q`select provider from store_gateways where store_id = ${s.storeId} and status = 'ativo' order by provider`;
+      // gateways: o PDV cobra Pix na tela por qualquer gateway conectado, sem exigir uma forma de pagamento "online" cadastrada
+      return { ...(await loadMenu(q, s.storeId)), tables: Number(cfg?.tables ?? 20), gateways: gws.map((g) => g.provider as string) };
     });
   });
 

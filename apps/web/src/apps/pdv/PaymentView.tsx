@@ -32,7 +32,7 @@ export default function PaymentView({ menu, target, onBack, onDone }: { menu: Me
   const cash = methods.find((p) => p.type === 'cash');
   const cards = methods.filter((p) => p.type === 'credit' || p.type === 'debit');
   const others = methods.filter((p) => p.type === 'pix' || p.type === 'voucher');
-  const gateways = [...new Set(menu.payments.filter((p) => p.online && p.gateway).map((p) => p.gateway as Gateway))];
+  const gateways = [...new Set([...(menu.gateways ?? []), ...menu.payments.filter((p) => p.online && p.gateway).map((p) => p.gateway as string)])].filter((g): g is Gateway => g === 'mercadopago' || g === 'sicoob');
 
   const run = async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
     setBusy(true); setError(null);
