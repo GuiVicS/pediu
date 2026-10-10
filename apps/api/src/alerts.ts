@@ -5,6 +5,7 @@ import type { Ctx } from './context.js';
 import { audit, fail, parse } from './http.js';
 import { guard } from './session.js';
 import { percentileFromBuckets } from './telemetry.js';
+import { explainAlert } from './alertExplain.js';
 
 const uuid = z.string().uuid();
 const iso = (d: Date) => d.toISOString();
@@ -136,19 +137,93 @@ export async function runRetention(ctx: Ctx, days = { logs: 30, metrics: 90, ale
   }));
 }
 
+type AlertRow = { rule_key: string; detail: unknown; store_id: string | null; first_seen: string | Date; last_seen: string | Date; rule_params: Record<string, number> | null };
+export interface Fact { label: string; value: string }
+const ageLabel = (iso: unknown, now: Date) => { const m = Math.max(0, (now.getTime() - new Date(String(iso)).getTime()) / 60_000); return m < 60 ? `${Math.round(m)} min` : `${Math.floor(m / 60)}h${String(Math.round(m % 60)).padStart(2, '0')}`; };
+
+/** Dados concretos que ajudam a decidir o que fazer (quais pedidos, quais motivos…), por regra. */
+async function alertFacts(q: Q, a: AlertRow, now: Date): Promise<Fact[]> {
+  const d = (a.detail ?? {}) as Record<string, any>; const sid = a.store_id;
+  if (a.rule_key === 'store.order_stuck' && sid) {
+    const limit = iso(new Date(now.getTime() - (a.rule_params?.max_minutes ?? 10) * 60_000));
+    const rows = await q`select number, type, channel, created_at, total_cents from orders where store_id = ${sid} and status = 'novo' and created_at < ${limit}::timestamptz order by created_at limit 12`;
+    return rows.map((r) => ({ label: `Pedido #${r.number} (${r.type === 'delivery' ? 'entrega' : r.type === 'mesa' ? 'mesa' : 'retirada'}, ${r.channel})`, value: `esperando há ${ageLabel(r.created_at, now)} · R$ ${(Number(r.total_cents) / 100).toFixed(2).replace('.', ',')}` }));
+  }
+  if (a.rule_key === 'store.cancel_rate' && sid) {
+    const since = iso(new Date(now.getTime() - (a.rule_params?.window_hours ?? 24) * 3_600_000));
+    const rows = await q`select coalesce(nullif(cancel_reason, ''), '(sem motivo informado)') as reason, count(*)::int as n from orders where store_id = ${sid} and status = 'cancelado' and created_at >= ${since}::timestamptz group by 1 order by n desc limit 6`;
+    return rows.map((r) => ({ label: `Motivo: ${r.reason}`, value: `${r.n} pedido(s)` }));
+  }
+  if (a.rule_key === 'store.no_orders' && sid) {
+    const [r] = await q`select max(created_at) as last, count(*)::int as total from orders where store_id = ${sid}`;
+    return r?.last ? [{ label: 'Último pedido recebido', value: `há ${ageLabel(r.last, now)}` }, { label: 'Pedidos no total', value: String(r.total) }] : [{ label: 'Pedidos recebidos', value: 'nenhum ainda' }];
+  }
+  if (a.rule_key === 'platform.webhook_stuck') {
+    const rows = await q`select event_id, received_at, error from webhook_inbox where provider = ${String(d.provider ?? '')} and processed_at is null order by received_at limit 8`;
+    return rows.map((r) => ({ label: `${d.provider}: evento ${String(r.event_id).slice(0, 24)}`, value: `recebido há ${ageLabel(r.received_at, now)}${r.error ? ` · erro: ${String(r.error).slice(0, 120)}` : ''}` }));
+  }
+  return [];
+}
+
+export interface RelatedLog { at: string; level: string; service: string; event: string; message: string; status: number | null; store_name: string | null; data: unknown }
+
+/** Logs que ajudam a explicar o alerta: da própria loja (quando é de loja) ou erros da plataforma (quando é geral), no período em que ele existiu. */
+async function alertLogs(q: Q, a: AlertRow, now: Date): Promise<RelatedLog[]> {
+  const first = new Date(a.first_seen).getTime(), last = Math.max(new Date(a.last_seen).getTime(), first);
+  const from = iso(new Date(first - 2 * 3_600_000)), to = iso(new Date(Math.min(now.getTime(), last + 10 * 60_000)));
+  const cols = (rows: Record<string, any>[]): RelatedLog[] => rows.map((r) => ({ at: r.at, level: r.level, service: r.service, event: r.event, message: r.message, status: r.status ?? null, store_name: r.store_name ?? null, data: r.data ?? null }));
+  if (a.rule_key === 'security.auth_failures') {
+    const rows = await q`select at, action, ip, meta from audit_logs where action in ('auth.failed', 'staff.login_failed') and at >= ${from}::timestamptz and at <= ${to}::timestamptz order by at desc limit 30`;
+    return rows.map((r) => ({ at: r.at, level: 'warn', service: 'api', event: r.action, message: `Falha de login${r.ip ? ` vinda de ${r.ip}` : ''}`, status: null, store_name: null, data: r.meta ?? null }));
+  }
+  if (a.store_id) {
+    return cols(await q`select l.at, l.level, l.service, l.event, l.message, l.status, l.data, s.name as store_name from app_logs l left join stores s on s.id = l.store_id
+      where l.store_id = ${a.store_id} and l.level in ('warn', 'error') and l.at >= ${from}::timestamptz and l.at <= ${to}::timestamptz order by l.at desc limit 30`);
+  }
+  if (a.rule_key === 'platform.webhook_stuck') {
+    const prov = `%${String((a.detail as Record<string, unknown> | null)?.provider ?? 'webhook')}%`;
+    return cols(await q`select l.at, l.level, l.service, l.event, l.message, l.status, l.data, s.name as store_name from app_logs l left join stores s on s.id = l.store_id
+      where l.level in ('warn', 'error') and l.at >= ${from}::timestamptz and (l.event ilike '%webhook%' or l.message ilike ${prov} or l.event ilike ${prov}) order by l.at desc limit 30`);
+  }
+  if (a.rule_key.startsWith('platform.')) {
+    return cols(await q`select l.at, l.level, l.service, l.event, l.message, l.status, l.data, s.name as store_name from app_logs l left join stores s on s.id = l.store_id
+      where l.level = 'error' and l.at >= ${from}::timestamptz and l.at <= ${to}::timestamptz order by l.at desc limit 30`);
+  }
+  return [];
+}
+
 const paramSchemas: Record<string, z.ZodTypeAny> = {};
 export function alertRoutes(app: FastifyInstance, ctx: Ctx) {
   const P = '/v1/platform';
 
   app.get(`${P}/alerts`, { preHandler: guard(ctx) }, async (req, reply) => {
     const qs = parse(z.object({ status: z.enum(['open', 'acknowledged', 'resolved', 'active']).default('active'), store: uuid.optional(), severity: z.enum(['info', 'warn', 'critical']).optional(), limit: z.coerce.number().int().min(1).max(200).default(100) }), req.query, reply); if (!qs) return;
+    const now = ctx.clock.now();
     return withPlatform(ctx.pools, async (q) => ({
-      alerts: await q`select a.id, a.rule_key, a.severity, a.title, a.detail, a.status, a.occurrences, a.first_seen, a.last_seen, a.ack_at, a.resolved_at, a.resolved_by, a.store_id, s.name as store_name, s.slug as store_slug
-        from alerts a left join stores s on s.id = a.store_id
+      alerts: (await q`select a.id, a.rule_key, a.severity, a.title, a.detail, a.status, a.occurrences, a.first_seen, a.last_seen, a.ack_at, a.resolved_at, a.resolved_by, a.store_id, s.name as store_name, s.slug as store_slug, r.params as rule_params
+        from alerts a left join stores s on s.id = a.store_id left join alert_rules r on r.key = a.rule_key
         where (${qs.status}::text = 'active' and a.status <> 'resolved' or a.status = ${qs.status}) and (${qs.store ?? null}::uuid is null or a.store_id = ${qs.store ?? null}::uuid)
           and (${qs.severity ?? null}::text is null or a.severity = ${qs.severity ?? null})
-        order by case a.severity when 'critical' then 0 when 'warn' then 1 else 2 end, a.last_seen desc limit ${qs.limit}`,
+        order by case a.severity when 'critical' then 0 when 'warn' then 1 else 2 end, a.last_seen desc limit ${qs.limit}`)
+        .map(({ rule_params, ...a }) => ({ ...a, plain: explainAlert({ ruleKey: a.rule_key, detail: a.detail, params: rule_params, storeName: a.store_name, now }).what })),
     }));
+  });
+
+  // "Entender este alerta": explicação em português, fatos concretos e os logs relacionados
+  app.get(`${P}/alerts/:id/context`, { preHandler: guard(ctx) }, async (req, reply) => {
+    const id = parse(uuid, (req.params as { id: string }).id, reply); if (!id) return;
+    const now = ctx.clock.now();
+    const out = await withPlatform(ctx.pools, async (q) => {
+      const [a] = await q`select a.id, a.rule_key, a.severity, a.title, a.detail, a.status, a.occurrences, a.first_seen, a.last_seen, a.store_id, a.tenant_id, s.name as store_name, s.slug as store_slug, r.params as rule_params, r.title as rule_title
+        from alerts a left join stores s on s.id = a.store_id left join alert_rules r on r.key = a.rule_key where a.id = ${id}`;
+      if (!a) return null;
+      const d = (a.detail ?? {}) as Record<string, any>;
+      const explanation = explainAlert({ ruleKey: a.rule_key, detail: d, params: a.rule_params, storeName: a.store_name, now });
+      const facts = await alertFacts(q, a as unknown as AlertRow, now);
+      const logs = await alertLogs(q, a as unknown as AlertRow, now);
+      return { alert: { id: a.id, rule_key: a.rule_key, rule_title: a.rule_title, severity: a.severity, title: a.title, status: a.status, occurrences: a.occurrences, first_seen: a.first_seen, last_seen: a.last_seen, store_id: a.store_id, store_name: a.store_name, store_slug: a.store_slug }, explanation, facts, logs };
+    });
+    return out ?? fail(reply, 404, 'not_found', 'Alerta não encontrado.');
   });
 
   const act = (path: string, to: 'acknowledged' | 'resolved') => app.post(`${P}/alerts/:id/${path}`, { preHandler: guard(ctx) }, async (req, reply) => {
