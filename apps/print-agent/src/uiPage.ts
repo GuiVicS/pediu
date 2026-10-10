@@ -33,19 +33,36 @@ export const PAGE = `<!doctype html>
   pre { margin:0; max-height:180px; overflow:auto; background:#0f172a; color:#e2e8f0; padding:12px; border-radius:12px; font-size:12px; white-space:pre-wrap; }
   ol { margin:6px 0 0 18px; padding:0; color:var(--mut); font-size:14px; }
   .hide { display:none; }
+  .big { text-align:center; padding:28px 20px; border:2px solid var(--p); }
+  .big .ico { width:72px; height:72px; margin:0 auto 12px; border-radius:50%; background:#e0f2fe; color:var(--p); display:flex; align-items:center; justify-content:center; font-size:38px; }
+  .big.done { border-color:var(--ok); } .big.done .ico { background:#dcfce7; color:var(--ok); }
+  .big h2 { font-size:24px; margin:0 0 6px; } .big .muted { font-size:15px; }
+  .big button { font-size:20px; padding:16px 44px; margin-top:8px; }
+  .big #autoMsgPair .msg { text-align:left; }
 </style></head>
 <body>
 <header><h1>Pediu Agente de Impressão</h1><small>versão __VERSION__</small><span id="pill" class="pill off"><i></i><span>Carregando…</span></span></header>
 <main>
+  <section class="card big hide" id="oneCard">
+    <div class="ico" id="oneIco">🔌</div>
+    <h2 id="oneTitle">Conectar este computador?</h2>
+    <p class="muted" id="oneInfo"></p>
+    <button id="oneBtn">Conectar</button>
+    <div id="autoMsgPair"></div>
+  </section>
+
   <section class="card" id="pairCard">
     <h2>1. Conectar este computador à sua loja</h2>
     <p class="muted">Você só faz isso uma vez. Depois o agente liga sozinho e continua conectado.</p>
-    <ol><li>No painel da loja, abra <b>Impressão</b> e clique em <b>Parear agente</b>.</li><li>Copie o código de 6 dígitos que aparece e coloque abaixo.</li></ol>
-    <label for="url">Endereço da sua loja</label><input id="url" placeholder="https://minhaloja.com.br" inputmode="url">
-    <label for="code">Código do painel</label><input id="code" placeholder="000000" inputmode="numeric" maxlength="7">
-    <label for="name">Nome deste computador</label><input id="name" placeholder="Caixa">
-    <div class="row" style="margin-top:14px"><button id="pairBtn">Conectar</button></div>
-    <div id="pairMsg"></div>
+    <p style="margin:0 0 8px"><b>Jeito mais fácil:</b> neste computador, abra o painel da sua loja, entre em <b>Impressão</b> e clique em <b>Conectar este computador</b>. O resto é automático.</p>
+    <details id="manual"><summary style="cursor:pointer;font-weight:600">Conectar digitando o código</summary>
+      <ol><li>No painel da loja, abra <b>Impressão</b> e clique em <b>Conectar este computador</b>.</li><li>Abra <b>Conectar com código</b> e copie o endereço e o código de 6 dígitos para os campos abaixo.</li></ol>
+      <label for="url">Endereço da sua loja</label><input id="url" placeholder="https://minhaloja.com.br" inputmode="url">
+      <label for="code">Código do painel</label><input id="code" placeholder="000000" inputmode="numeric" maxlength="7">
+      <label for="name">Nome deste computador</label><input id="name" placeholder="Caixa">
+      <div class="row" style="margin-top:14px"><button id="pairBtn">Conectar</button></div>
+      <div id="pairMsg"></div>
+    </details>
   </section>
 
   <section class="card hide" id="linkCard">
@@ -89,6 +106,32 @@ export const PAGE = `<!doctype html>
   function msg(id, kind, text) { $(id).innerHTML = text ? '<div class="msg ' + kind + '">' + esc(text) + '</div>' : ''; }
   var LABEL = { 'sem-pareamento': ['off', 'Não pareado'], conectando: ['warn', 'Conectando…'], conectado: ['ok', 'Conectado'], reconectando: ['warn', 'Reconectando…'], recusado: ['bad', 'Pareamento recusado'], removido: ['bad', 'Removido no painel'] };
   var first = true;
+  // Conexão com um clique: o painel abre esta tela com #conectar?url=…&code=…&loja=… (o # não vai para servidor nenhum e sai da barra de endereço na hora).
+  // A pessoa confirma no botão: nenhum site consegue ligar este computador a uma loja sem ela ver.
+  var one = null, oneDone = false;
+  (function () {
+    var m = /^#conectar\\?(.*)$/.exec(location.hash || '');
+    if (!m) return;
+    try { history.replaceState(null, '', location.pathname); } catch (e) { /* segue com o # na barra */ }
+    var q = new URLSearchParams(m[1]), url = (q.get('url') || '').trim(), code = (q.get('code') || '').replace(/\\D/g, '');
+    if (!/^https?:\\/\\/[^\\s\\/]+$/i.test(url) || code.length !== 6) return;
+    one = { url: url, code: code, loja: (q.get('loja') || '').slice(0, 80) };
+  })();
+  function renderOne(s) {
+    if (!one) return;
+    var same = s.paired && s.store.url === one.url && s.status !== 'recusado' && s.status !== 'removido';
+    if (oneDone || same) {
+      $('oneCard').className = 'card big done'; $('oneIco').textContent = '✓';
+      $('oneTitle').textContent = 'Pronto! Computador conectado';
+      $('oneInfo').textContent = 'Pode fechar esta aba e voltar para o painel da loja. O agente continua ligado sozinho.';
+      $('oneBtn').className = 'hide'; $('pairCard').className = 'card hide';
+      return;
+    }
+    $('oneCard').className = 'card big';
+    $('oneTitle').textContent = one.loja ? 'Conectar à loja ' + one.loja + '?' : 'Conectar este computador à loja?';
+    $('oneInfo').textContent = one.url + (s.paired ? ' · Este computador hoje está ligado a ' + s.store.url + ' e vai passar para a loja acima.' : ' · Os pedidos desta loja vão sair nas impressoras deste computador.');
+    $('pairCard').className = 'card hide';
+  }
 
   function render(s) {
     var l = LABEL[s.status] || ['off', s.status];
@@ -97,6 +140,7 @@ export const PAGE = `<!doctype html>
     $('linkCard').className = 'card' + (s.paired ? '' : ' hide');
     if (s.paired) $('linkInfo').textContent = s.store.url + ' · este computador aparece como “' + s.store.name + '”.' + (s.status === 'recusado' || s.status === 'removido' ? ' O painel não reconhece mais este pareamento: gere um código novo e conecte de novo.' : '');
     if (first) { $('name').value = s.defaultName || ''; first = false; }
+    renderOne(s);
     $('autoPill').className = 'pill ' + (s.autostart ? 'ok' : 'off'); $('autoPill').lastChild.textContent = s.autostart ? 'Ligado' : 'Desligado';
     $('autoBtn').textContent = s.autostart ? 'Desligar' : 'Ligar'; $('autoBtn').dataset.on = s.autostart ? '1' : '';
     $('jobs').innerHTML = s.jobs.length ? s.jobs.map(function (j) {
@@ -130,6 +174,18 @@ export const PAGE = `<!doctype html>
     $('pairBtn').disabled = true; msg('pairMsg', '', '');
     api('POST', '/api/pair', { url: $('url').value, code: $('code').value, name: $('name').value }).then(function () { $('code').value = ''; poll(); })
       .catch(function (e) { msg('pairMsg', 'e', e.message); }).then(function () { $('pairBtn').disabled = false; });
+  };
+  $('oneBtn').onclick = function () {
+    if (!one) return;
+    $('oneBtn').disabled = true; $('oneBtn').textContent = 'Conectando…'; msg('autoMsgPair', '', '');
+    api('POST', '/api/pair', { url: one.url, code: one.code, name: '' }).then(function () {
+      oneDone = true; poll();
+      // já deixa ligado para abrir junto com o computador (dá para desligar no item 3)
+      return api('POST', '/api/autostart', { on: true }).then(poll).catch(function () { /* sem início automático: a pessoa liga no item 3 */ });
+    }).catch(function (e) {
+      $('oneBtn').disabled = false; $('oneBtn').textContent = 'Tentar de novo';
+      msg('autoMsgPair', 'e', e.message + ' Volte ao painel e clique em “Conectar este computador” para gerar um código novo.');
+    });
   };
   $('unpairBtn').onclick = function () { if (confirm('Desconectar este computador da loja? Os pedidos deixam de sair aqui até parear de novo.')) api('POST', '/api/unpair').then(poll).catch(function (e) { msg('linkMsg', 'e', e.message); }); };
   $('refresh').onclick = loadPrinters;

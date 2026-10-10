@@ -60,7 +60,7 @@ export function AgentDownload({ compact }: { compact?: boolean }) {
 export function PrintGuide({ d, onPair }: { d: GuideData; onPair: () => void }) {
   const steps = [
     { id: 1, icon: Download, title: 'Instalar o agente no computador das impressoras', done: d.agents > 0, help: 'Baixe e abra o agente. Ele é quem conversa com as impressoras.' },
-    { id: 2, icon: Plug, title: 'Conectar o agente à sua loja', done: d.agents > 0, help: 'Um código de 6 dígitos liga o computador à loja. Só precisa fazer uma vez: depois fica sempre conectado.' },
+    { id: 2, icon: Plug, title: 'Conectar o agente à sua loja', done: d.agents > 0, help: 'Um clique liga o computador à loja. Só precisa fazer uma vez: depois fica sempre conectado.' },
     { id: 3, icon: Printer, title: 'Puxar as impressoras do computador', done: d.printers > 0, help: 'O agente mostra as impressoras que o computador enxerga e você cadastra com um clique.' },
     { id: 4, icon: Route, title: 'Dizer qual zona imprime em qual impressora', done: d.zonesTotal > 0 && d.zonesWithoutPrinter === 0 && d.printers > 0, help: 'Zona é um setor (cozinha, bar, caixa). Cada categoria do cardápio vai para uma zona, e cada zona para uma impressora.' },
   ];
@@ -87,8 +87,8 @@ export function PrintGuide({ d, onPair }: { d: GuideData; onPair: () => void }) 
                     <div className="mt-3 space-y-3">
                       <AgentDownload compact />
                       <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
-                        <button className="btn" onClick={onPair}><Plug size={14} /> Já abri o agente: gerar código de pareamento</button>
-                        <span className="text-xs text-muted-foreground">Você digita o código na tela do agente (passo 2).</span>
+                        <button className="btn" onClick={onPair}><Plug size={14} /> Já abri o agente: conectar este computador</button>
+                        <span className="text-xs text-muted-foreground">Sem digitar nada: é só confirmar na tela do agente.</span>
                       </div>
                     </div>
                   )}

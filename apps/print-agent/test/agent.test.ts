@@ -9,6 +9,8 @@ import { runAgent, type ConnStatus } from '../src/agent.js';
 import { autostart, autostartContent, autostartFile } from '../src/autostart.js';
 import { PrintedLog } from '../src/config.js';
 import { Controller, createUiServer } from '../src/ui.js';
+import { PAGE } from '../src/uiPage.js';
+import { runInNewContext } from 'node:vm';
 
 class FakeWs extends EventEmitter {
   readyState = 1; sent: any[] = [];
@@ -82,4 +84,47 @@ test('tela local: só responde a Host de loopback e exige o token da página', a
     assert.equal((await call('/api/pair', { method: 'POST', headers: H, body: JSON.stringify({ url: 'https://x.test', code: '12' }) })).status, 400);
     assert.equal((await call('/api/test', { method: 'POST', headers: H, body: JSON.stringify({ connection: 'rm -rf', address: 'x' }) })).status, 400);
   } finally { server.close(); }
+});
+
+/** Roda o JS da tela do agente num DOM de mentira: cada id vira um objeto simples; `fetch` é o que o teste responder. */
+function fakePage(hash: string, status: Record<string, unknown>, onCall: (path: string, body: any) => unknown = () => ({})) {
+  const els: Record<string, any> = {}; const calls: { method: string; path: string; body: any }[] = [];
+  const el = (id: string) => els[id] ??= { className: '', textContent: '', innerHTML: '', value: '', dataset: {}, disabled: false, lastChild: { textContent: '' }, querySelectorAll: () => [] };
+  const location = { hash, pathname: '/' };
+  const fetch = async (path: string, init: { method: string; body?: string }) => {
+    const body = init.body ? JSON.parse(init.body) : undefined; calls.push({ method: init.method, path, body });
+    const out: any = path === '/api/status' ? status : path === '/api/printers' ? { printers: [] } : onCall(path, body);
+    const failed = out && typeof out.error === 'string';
+    return { ok: !failed, status: failed ? 400 : 200, json: async () => out };
+  };
+  runInNewContext(/<script>([\s\S]*)<\/script>/.exec(PAGE)![1]!, { document: { getElementById: el }, location, history: { replaceState: () => { location.hash = ''; } }, fetch, setInterval: () => 0, URLSearchParams, confirm: () => true, Date });
+  return { el, calls, location };
+}
+const STATUS = { version: '0.2.0', paired: false, status: 'sem-pareamento', store: null, jobs: [], logs: [], autostart: false, defaultName: 'CAIXA-PC' };
+
+test('tela local: o painel abre #conectar?… e um clique em "Conectar" pareia, sem digitar nada', async () => {
+  const q = new URLSearchParams({ url: 'https://pizzaria.test', code: '123456', loja: 'Pizzaria do Gaúcho' });
+  const st: any = { ...STATUS };
+  const p = fakePage(`#conectar?${q}`, st, (path) => { if (path === '/api/pair') { st.paired = true; st.status = 'conectado'; st.store = { url: 'https://pizzaria.test', name: 'CAIXA-PC' }; } return { ok: true }; });
+  await wait();
+  assert.equal(p.location.hash, '', 'o código sai da barra de endereço');
+  assert.equal(p.el('oneCard').className, 'card big'); assert.equal(p.el('pairCard').className, 'card hide');
+  assert.equal(p.el('oneTitle').textContent, 'Conectar à loja Pizzaria do Gaúcho?'); assert.ok(p.el('oneInfo').textContent.startsWith('https://pizzaria.test'));
+  assert.ok(!p.calls.some((c) => c.path === '/api/pair'), 'não pareia sozinho: espera o clique');
+  p.el('oneBtn').onclick(); await wait(50);
+  assert.deepEqual(p.calls.find((c) => c.path === '/api/pair')!.body, { url: 'https://pizzaria.test', code: '123456', name: '' });
+  assert.deepEqual(p.calls.find((c) => c.path === '/api/autostart')!.body, { on: true });
+  assert.equal(p.el('oneCard').className, 'card big done'); assert.equal(p.el('oneTitle').textContent, 'Pronto! Computador conectado');
+});
+
+test('tela local: link de conexão inválido é ignorado e código vencido mostra o erro com "Tentar de novo"', async () => {
+  for (const bad of ['#conectar?url=javascript:alert(1)&code=123456', '#conectar?url=https://x.test/caminho&code=123456', '#conectar?url=https://x.test&code=12', '#outra-coisa']) {
+    const p = fakePage(bad, { ...STATUS }); await wait();
+    assert.notEqual(p.el('oneCard').className, 'card big', bad); assert.equal(p.el('pairCard').className, 'card', bad);
+  }
+  const p = fakePage('#conectar?url=https://x.test&code=123456', { ...STATUS }, () => ({ error: 'Código inválido ou vencido.' })); await wait();
+  assert.equal(p.el('oneTitle').textContent, 'Conectar este computador à loja?');
+  p.el('oneBtn').onclick(); await wait(50);
+  assert.equal(p.el('oneBtn').textContent, 'Tentar de novo'); assert.ok(p.el('autoMsgPair').innerHTML.includes('Código inválido ou vencido.'));
+  assert.equal(p.el('oneCard').className, 'card big');
 });
