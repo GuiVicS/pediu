@@ -32,7 +32,8 @@ test('painel: o lojista gera o token (aparece uma vez), lista sem segredos, só 
   const list = (await admin.get('/v1/staff/mcp')).body;
   assert.equal(list.tokens.length, 1); assert.equal(list.tokens[0].name, 'Claude da loja'); assert.deepEqual(list.tokens[0].scopes, ['orders']);
   assert.equal(JSON.stringify(list).includes(TOKEN), false); assert.equal('token_hash' in list.tokens[0], false);     // o segredo nunca volta
-  assert.deepEqual(list.tools.map((t: any) => t.name), ['listar_colecoes', 'listar_produtos', 'consultar_cardapio', 'criar_pedido', 'mudar_status', 'cancelar_pedido']);
+  assert.deepEqual(list.tools.map((t: any) => t.name), ['listar_colecoes', 'listar_produtos', 'consultar_cardapio', 'criar_pedido', 'mudar_status', 'cancelar_pedido', 'listar_clientes', 'criar_cliente', 'editar_cliente', 'excluir_cliente', 'gerar_pix', 'link_pagamento']);
+  assert.deepEqual([...new Set(list.tools.map((t: any) => t.scope))], ['orders', 'customers', 'payments']);              // o painel mostra a que permissão cada ferramenta pertence
   assert.equal((await adminB.get('/v1/staff/mcp')).body.tokens.length, 0);                                              // outra loja não vê
   for (let i = 0; i < 4; i++) assert.equal((await admin.post('/v1/staff/mcp/tokens', { name: `t${i}` })).status, 201);
   assert.equal((await admin.post('/v1/staff/mcp/tokens', { name: 'sexto' })).status, 422);                              // limite
@@ -204,4 +205,107 @@ test('token revogado ou vencido para de valer na hora', async () => {
   assert.equal((await rpc({ jsonrpc: '2.0', id: 1, method: 'ping' })).status, 401);                                      // revogado
   const [t] = await env.pools.platform.begin((q) => q`select last_used_at from store_mcp_tokens where id = ${TOKEN_ID}`);
   assert.ok(t!.last_used_at);                                                                                            // o último uso foi registrado
+});
+
+// ---------------- escopos opcionais: clientes e pagamentos (loja B, token próprio) ----------------
+let FULL = ''; let BASIC_B = '';
+const callAs = async (token: string, name: string, args: object = {}) => { const r = await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, token); return { ...r, text: r.body?.result?.content?.[0]?.text as string, isError: !!r.body?.result?.isError }; };
+const pixCalls: { amountCents: number; reference: string }[] = [];
+
+test('escopos: clientes e pagamentos só entram no token se o lojista marcar; o token básico não vê nem chama essas ferramentas', async () => {
+  assert.equal((await adminB.post('/v1/staff/mcp/tokens', { name: 'x', scopes: ['orders'] })).status, 400);               // 'orders' é implícito; só os extras são aceitos
+  assert.equal((await adminB.post('/v1/staff/mcp/tokens', { name: 'x', scopes: ['admin'] })).status, 400);
+  const basic = (await adminB.post('/v1/staff/mcp/tokens', { name: 'básico' })).body; BASIC_B = basic.token;
+  assert.deepEqual(basic.scopes, ['orders']);
+  const full = (await adminB.post('/v1/staff/mcp/tokens', { name: 'completo', scopes: ['payments', 'customers'] })).body; FULL = full.token;
+  assert.deepEqual(full.scopes, ['orders', 'customers', 'payments']);
+  const names = async (t: string) => (await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, t)).body.result.tools.map((x: any) => x.name) as string[];
+  assert.equal((await names(BASIC_B)).length, 6); assert.equal((await names(BASIC_B)).some((n) => /cliente|pix|pagamento/.test(n)), false);
+  assert.equal((await names(FULL)).length, 12);
+  for (const [tool, args] of [['listar_clientes', {}], ['criar_cliente', { nome: 'Ana Lima', telefone: '(16) 98888-0001' }], ['gerar_pix', { numero: 1 }], ['link_pagamento', { numero: 1 }]] as const) {
+    const r = await callAs(BASIC_B, tool, args); assert.equal(r.isError, true); assert.match(r.text, /não tem acesso a (clientes|pagamentos)/);
+  }
+  const [n] = await env.pools.platform.begin((q) => q`select count(*)::int as n from store_customers where store_id = ${B.storeId}`);
+  assert.equal(n!.n, 0);                                                                                               // a recusa não gravou nada
+  const init = (await rpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } }, FULL)).body.result.instructions as string;
+  assert.match(init, /CLIENTES:/); assert.match(init, /PAGAMENTOS:/); assert.match(init, /NÃO consegue ler nem listar pedidos/);
+});
+
+test('clientes pelo MCP: criar (com e sem e-mail), listar com busca, editar, excluir; sem duplicar telefone e sem trocar o login de quem tem conta', async () => {
+  assert.match((await callAs(FULL, 'criar_cliente', { nome: 'Ana Lima' })).text, /telefone/i);                           // telefone obrigatório
+  assert.match((await callAs(FULL, 'criar_cliente', { nome: 'Ana Lima', telefone: '123' })).text, /Telefone inválido/);
+  const ana = await callAs(FULL, 'criar_cliente', { nome: 'Ana Lima', telefone: '(16) 98888-0001' });
+  assert.equal(ana.isError, false); const anaId = data(ana).cliente.id as string;
+  assert.equal(data(ana).cliente.telefone, '16988880001'); assert.equal('email' in data(ana).cliente && data(ana).cliente.email !== undefined, false);   // sem e-mail: o endereço reservado não aparece
+  const bia = await callAs(FULL, 'criar_cliente', { nome: 'Bia Souza', telefone: '16 97777-0002', email: 'Bia@Exemplo.com' });
+  assert.equal(data(bia).cliente.email, 'bia@exemplo.com');
+  assert.match((await callAs(FULL, 'criar_cliente', { nome: 'Outra Ana', telefone: '+55 16 98888-0001' })).text, /Já existe um cliente/);   // mesmo telefone, outro formato
+  assert.match((await callAs(FULL, 'criar_cliente', { nome: 'Outra Bia', telefone: '16966660003', email: 'bia@exemplo.com' })).text, /Já existe um cliente/);
+
+  assert.equal(data(await callAs(FULL, 'listar_clientes')).total, 2);
+  assert.deepEqual(data(await callAs(FULL, 'listar_clientes', { busca: 'bia' })).clientes.map((x: any) => x.nome), ['Bia Souza']);
+  assert.deepEqual(data(await callAs(FULL, 'listar_clientes', { busca: '98888-0001' })).clientes.map((x: any) => x.nome), ['Ana Lima']);   // busca por telefone com máscara
+  assert.equal((await callAs(FULL, 'listar_clientes')).text.includes('sem-email.invalid'), false);
+
+  assert.match((await callAs(FULL, 'editar_cliente', { id: anaId })).text, /Informe o que mudar/);
+  const ed = await callAs(FULL, 'editar_cliente', { id: anaId, nome: 'Ana Lima Prado', email: 'ana@exemplo.com' });
+  assert.equal(data(ed).cliente.nome, 'Ana Lima Prado'); assert.equal(data(ed).cliente.email, 'ana@exemplo.com'); assert.equal(data(ed).cliente.telefone, '16988880001');
+  assert.match((await callAs(FULL, 'editar_cliente', { id: anaId, telefone: '16977770002' })).text, /Outro cliente já usa/);
+  // cliente com conta (senha): nome e telefone mudam, o e-mail (login) não
+  const [conta] = await env.pools.platform.begin((q) => q`insert into store_customers (store_id, tenant_id, email, name, phone, password_hash) values (${B.storeId}, ${B.tenantId}, 'caio@exemplo.com', 'Caio', '16955550004', 'hash') returning id`);
+  assert.match((await callAs(FULL, 'editar_cliente', { id: conta!.id, email: 'outro@exemplo.com' })).text, /já tem conta na loja/);
+  assert.equal(data(await callAs(FULL, 'editar_cliente', { id: conta!.id, nome: 'Caio Reis' })).cliente.nome, 'Caio Reis');
+
+  // isolamento: cliente de outra loja não é visto, editado nem excluído
+  const [alheio] = await env.pools.platform.begin((q) => q`insert into store_customers (store_id, tenant_id, email, name, phone) values (${A.storeId}, ${A.tenantId}, 'alheio@exemplo.com', 'Alheio', '16944440005') returning id`);
+  assert.equal((await callAs(FULL, 'listar_clientes', { busca: 'Alheio' })).text.includes('Alheio'), false);
+  assert.match((await callAs(FULL, 'editar_cliente', { id: alheio!.id, nome: 'Invadido' })).text, /não encontrado/);
+  assert.match((await callAs(FULL, 'excluir_cliente', { id: alheio!.id })).text, /não encontrado/);
+  const [ok] = await env.pools.platform.begin((q) => q`select name from store_customers where id = ${alheio!.id}`); assert.equal(ok!.name, 'Alheio');
+
+  const del = await callAs(FULL, 'excluir_cliente', { id: anaId });
+  assert.equal(del.isError, false); assert.match(data(del).mensagem, /Ana Lima Prado/);
+  assert.match((await callAs(FULL, 'excluir_cliente', { id: anaId })).text, /não encontrado/);
+  assert.equal(data(await callAs(FULL, 'listar_clientes')).total, 2);                                                    // Bia e Caio
+  const acts = (await env.pools.platform.begin((q) => q`select action, actor_id from audit_logs where store_id = ${B.storeId} and action like 'store_mcp.customer_%' order by at`)).map((r) => r.action);
+  assert.deepEqual(acts, ['store_mcp.customer_created', 'store_mcp.customer_created', 'store_mcp.customer_updated', 'store_mcp.customer_updated', 'store_mcp.customer_deleted']);
+});
+
+test('pagamentos pelo MCP: gera o Pix do pedido (copia e cola + link), reaproveita o que ainda vale e recusa pedido pago, cancelado ou loja sem gateway', async () => {
+  const o = await newOrder(adminB, B);
+  assert.match((await callAs(FULL, 'gerar_pix', { numero: o.number })).text, /não tem Pix online conectado/);            // sem gateway
+  env.ctx.gateways = { mercadoPago: () => ({
+    async whoami() { return { id: '123', nickname: 'LOJA_TESTE' }; },
+    async createPix(p: any) { pixCalls.push({ amountCents: p.amountCents, reference: p.reference }); return { id: String(7000 + pixCalls.length), status: 'pending', amountCents: p.amountCents, externalReference: p.reference, qrCode: `00020126PIX${pixCalls.length}` }; },
+    async createCardPayment() { throw new Error('não usado'); }, async getPayment() { throw new Error('não usado'); }, async refund() { /* não usado */ },
+  }) as any, sicoob: () => { throw new Error('não usado'); } };
+  assert.equal((await adminB.put('/v1/staff/gateways/mercadopago', { accessToken: 'TEST-1234567890123456-123456-abcdefabcdefabcdefabcdefabcdef-123456789' })).status, 200);
+  assert.match((await callAs(FULL, 'gerar_pix', { numero: 999999 })).text, /não encontrado/);
+
+  const semHost = await callAs(FULL, 'link_pagamento', { numero: o.number });                                              // loja ainda sem endereço verificado: não inventa link
+  assert.equal(semHost.isError, true); assert.match(semHost.text, /copia e cola/); assert.equal(pixCalls.length, 0);
+  await env.pools.platform.begin((q) => q`insert into store_domains (tenant_id, store_id, hostname, kind, verified_at) values (${B.tenantId}, ${B.storeId}, 'mcp-b.exemplo.test', 'subdomain', now())`);
+
+  const pix = await callAs(FULL, 'gerar_pix', { numero: o.number });
+  assert.equal(pix.isError, false); const d = data(pix);
+  assert.match(d.pix_copia_e_cola, /^00020126PIX/); assert.match(d.link_pagamento, /^https:\/\/mcp-b\.exemplo\.test\/pagar\/[0-9a-f]{64}$/); assert.ok(new Date(d.expira_em).getTime() > Date.now());
+  const again = await callAs(FULL, 'link_pagamento', { numero: o.number });                                                // mesmo Pix: não cobra duas vezes
+  assert.equal(data(again).link, d.link_pagamento); assert.equal('pix_copia_e_cola' in data(again), false);
+  const created = pixCalls.length;
+  assert.equal(data(await callAs(FULL, 'gerar_pix', { numero: o.number })).pix_copia_e_cola, d.pix_copia_e_cola); assert.equal(pixCalls.length, created);
+  const row = await orderOf(adminB, o.number);
+  assert.equal(pixCalls.at(-1)!.amountCents, row.total_cents);                                                             // cobra o total do pedido
+  // a página do link lê o pagamento pelo token público do pedido
+  const token = d.link_pagamento.split('/').pop();
+  const pub = await env.app.inject({ method: 'GET', url: `/v1/track/${token}/payment` });
+  assert.equal(pub.statusCode, 200); assert.equal(JSON.parse(pub.body).status, 'pendente'); assert.equal(JSON.parse(pub.body).qr_code, d.pix_copia_e_cola);
+  assert.equal(/Maria|16999990000/.test(pix.text), false);                                                                 // a resposta não devolve dados do cliente
+
+  await env.pools.platform.begin((q) => q`update orders set paid = true where id = ${o.id}`);
+  assert.match((await callAs(FULL, 'gerar_pix', { numero: o.number })).text, /já está pago/);
+  const c = await newOrder(adminB, B);
+  assert.equal((await callAs(FULL, 'cancelar_pedido', { numero: c.number, motivo: 'cliente desistiu' })).isError, false);
+  assert.match((await callAs(FULL, 'link_pagamento', { numero: c.number })).text, /cancelado/);
+  const acts = (await env.pools.platform.begin((q) => q`select action from audit_logs where store_id = ${B.storeId} and action like 'store_mcp.pix_%' order by at`)).map((r) => r.action);
+  assert.deepEqual(acts, ['store_mcp.pix_created', 'store_mcp.pix_reused', 'store_mcp.pix_reused']);
 });

@@ -4,6 +4,7 @@ insert into public.tenants (id, name) values ('00000000-0000-0000-0000-000000000
 insert into public.stores (id, tenant_id, slug, name, status) values
   ('10000000-0000-0000-0000-0000000000a9', '00000000-0000-0000-0000-0000000000a9', 'loja-m1', 'Loja M1', 'producao'),
   ('10000000-0000-0000-0000-0000000000b9', '00000000-0000-0000-0000-0000000000b9', 'loja-m2', 'Loja M2', 'producao');
+insert into public.store_customers (id, store_id, tenant_id, email, name) values ('a0000000-0000-0000-0000-0000000000b9', '10000000-0000-0000-0000-0000000000b9', '00000000-0000-0000-0000-0000000000b9', 'alheio@m2.test', 'Cliente Alheio');
 insert into public.store_mcp_tokens (id, store_id, tenant_id, name, token_hash) values
   ('90000000-0000-0000-0000-0000000000a9', '10000000-0000-0000-0000-0000000000a9', '00000000-0000-0000-0000-0000000000a9', 'Token 1', 'hash-m1'),
   ('90000000-0000-0000-0000-0000000000b9', '10000000-0000-0000-0000-0000000000b9', '00000000-0000-0000-0000-0000000000b9', 'Token 2', 'hash-m2');
@@ -23,8 +24,19 @@ do $$ begin
     raise exception 'FALHOU: criou token em outra conta'; exception when insufficient_privilege then null; end;
   begin delete from public.store_mcp_tokens where id = '90000000-0000-0000-0000-0000000000a9';
     raise exception 'FALHOU: lojista conseguiu apagar o token (só revoga)'; exception when insufficient_privilege then null; end;
-  begin insert into public.store_mcp_tokens (store_id, tenant_id, name, token_hash, scopes) values ('10000000-0000-0000-0000-0000000000a9', '00000000-0000-0000-0000-0000000000a9', 'y', 'h-y', array['payments']);
+  begin insert into public.store_mcp_tokens (store_id, tenant_id, name, token_hash, scopes) values ('10000000-0000-0000-0000-0000000000a9', '00000000-0000-0000-0000-0000000000a9', 'y', 'h-y', array['orders', 'cardapio']);
     raise exception 'FALHOU: aceitou escopo desconhecido'; exception when check_violation then null; end;
+  begin insert into public.store_mcp_tokens (store_id, tenant_id, name, token_hash, scopes) values ('10000000-0000-0000-0000-0000000000a9', '00000000-0000-0000-0000-0000000000a9', 'z', 'h-z', array['payments']);
+    raise exception 'FALHOU: aceitou token sem o escopo básico orders'; exception when check_violation then null; end;
+  insert into public.store_mcp_tokens (store_id, tenant_id, name, token_hash, scopes) values ('10000000-0000-0000-0000-0000000000a9', '00000000-0000-0000-0000-0000000000a9', 'w', 'h-w', array['orders', 'customers', 'payments']);
+end $$;
+-- excluir cliente pelo MCP: um por vez, só da própria conta (app_api segue sem delete na tabela)
+insert into public.store_customers (id, store_id, tenant_id, email, name) values ('a0000000-0000-0000-0000-0000000000a9', '10000000-0000-0000-0000-0000000000a9', '00000000-0000-0000-0000-0000000000a9', 'meu@m1.test', 'Meu Cliente');
+select pg_temp.expect((select count(*) from app.store_mcp_delete_customer('10000000-0000-0000-0000-0000000000b9', 'a0000000-0000-0000-0000-0000000000b9')) = 0, 'não exclui cliente de outra conta');
+select pg_temp.expect((select count(*) from app.store_mcp_delete_customer('10000000-0000-0000-0000-0000000000b9', 'a0000000-0000-0000-0000-0000000000a9')) = 0, 'não exclui informando a loja errada');
+select pg_temp.expect((select name from app.store_mcp_delete_customer('10000000-0000-0000-0000-0000000000a9', 'a0000000-0000-0000-0000-0000000000a9')) = 'Meu Cliente', 'exclui o cliente da própria conta');
+do $$ begin
+  begin delete from public.store_customers; raise exception 'FALHOU: API apagou clientes direto na tabela'; exception when insufficient_privilege then null; end;
 end $$;
 -- a autenticação (função) acha o token pelo hash e registra o uso; token revogado não autentica
 select pg_temp.expect((select count(*) from app.store_mcp_authenticate('hash-m1', '203.0.113.9')) = 1, 'autentica pelo hash');
