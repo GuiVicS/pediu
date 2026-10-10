@@ -211,6 +211,7 @@ test('token revogado ou vencido para de valer na hora', async () => {
 let FULL = ''; let BASIC_B = '';
 const callAs = async (token: string, name: string, args: object = {}) => { const r = await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, token); return { ...r, text: r.body?.result?.content?.[0]?.text as string, isError: !!r.body?.result?.isError }; };
 const pixCalls: { amountCents: number; reference: string }[] = [];
+const cancelled: string[] = []; let cancelFails = false;
 
 test('escopos: clientes e pagamentos só entram no token se o lojista marcar; o token básico não vê nem chama essas ferramentas', async () => {
   assert.equal((await adminB.post('/v1/staff/mcp/tokens', { name: 'x', scopes: ['orders'] })).status, 400);               // 'orders' é implícito; só os extras são aceitos
@@ -277,7 +278,8 @@ test('pagamentos pelo MCP: gera o Pix do pedido (copia e cola + link), reaprovei
   env.ctx.gateways = { mercadoPago: () => ({
     async whoami() { return { id: '123', nickname: 'LOJA_TESTE' }; },
     async createPix(p: any) { pixCalls.push({ amountCents: p.amountCents, reference: p.reference }); return { id: String(7000 + pixCalls.length), status: 'pending', amountCents: p.amountCents, externalReference: p.reference, qrCode: `00020126PIX${pixCalls.length}` }; },
-    async createCardPayment() { throw new Error('não usado'); }, async getPayment() { throw new Error('não usado'); }, async refund() { /* não usado */ },
+    async createCardPayment(p: any) { return { id: `card-${p.reference}`, status: 'approved', amountCents: p.amountCents, externalReference: p.reference }; }, async getPayment() { throw new Error('não usado'); }, async refund() { /* não usado */ },
+    async cancel(id: string) { if (cancelFails) throw new Error('gateway fora do ar'); cancelled.push(id); },
   }) as any, sicoob: () => { throw new Error('não usado'); } };
   assert.equal((await adminB.put('/v1/staff/gateways/mercadopago', { accessToken: 'TEST-1234567890123456-123456-abcdefabcdefabcdefabcdefabcdef-123456789' })).status, 200);
   assert.match((await callAs(FULL, 'gerar_pix', { numero: 999999 })).text, /não encontrado/);
@@ -288,17 +290,21 @@ test('pagamentos pelo MCP: gera o Pix do pedido (copia e cola + link), reaprovei
 
   const pix = await callAs(FULL, 'gerar_pix', { numero: o.number });
   assert.equal(pix.isError, false); const d = data(pix);
-  assert.match(d.pix_copia_e_cola, /^00020126PIX/); assert.match(d.link_pagamento, /^https:\/\/mcp-b\.exemplo\.test\/pagar\/[0-9a-f]{64}$/); assert.ok(new Date(d.expira_em).getTime() > Date.now());
+  assert.match(d.pix_copia_e_cola, /^00020126PIX/); assert.ok(new Date(d.expira_em).getTime() > Date.now());
   const again = await callAs(FULL, 'link_pagamento', { numero: o.number });                                                // mesmo Pix: não cobra duas vezes
-  assert.equal(data(again).link, d.link_pagamento); assert.equal('pix_copia_e_cola' in data(again), false);
+  const link = data(again).link as string;
+  assert.match(link, /^https:\/\/mcp-b\.exemplo\.test\/pagar\/[0-9a-f]{64}$/); assert.deepEqual(data(again).formas_de_pagamento, ['pix']);   // loja sem cartão online: o link cai no Pix
+  assert.equal('pix_copia_e_cola' in data(again), false);
   const created = pixCalls.length;
   assert.equal(data(await callAs(FULL, 'gerar_pix', { numero: o.number })).pix_copia_e_cola, d.pix_copia_e_cola); assert.equal(pixCalls.length, created);
   const row = await orderOf(adminB, o.number);
   assert.equal(pixCalls.at(-1)!.amountCents, row.total_cents);                                                             // cobra o total do pedido
   // a página do link lê o pagamento pelo token público do pedido
-  const token = d.link_pagamento.split('/').pop();
-  const pub = await env.app.inject({ method: 'GET', url: `/v1/track/${token}/payment` });
-  assert.equal(pub.statusCode, 200); assert.equal(JSON.parse(pub.body).status, 'pendente'); assert.equal(JSON.parse(pub.body).qr_code, d.pix_copia_e_cola);
+  const token = link.split('/').pop();
+  const pub = await env.app.inject({ method: 'GET', url: `/v1/track/${token}/pay` });
+  assert.equal(pub.statusCode, 200); assert.equal(JSON.parse(pub.body).pix.qrCode, d.pix_copia_e_cola); assert.equal(JSON.parse(pub.body).card, null); assert.equal(JSON.parse(pub.body).paid, false);
+  assert.equal(/Maria|16999990000/.test(pub.body), false);                                                                 // a página pública não expõe dados do cliente
+  assert.equal((await env.app.inject({ method: 'GET', url: `/v1/track/${'a'.repeat(64)}/pay` })).statusCode, 404);
   assert.equal(/Maria|16999990000/.test(pix.text), false);                                                                 // a resposta não devolve dados do cliente
 
   await env.pools.platform.begin((q) => q`update orders set paid = true where id = ${o.id}`);
@@ -307,5 +313,64 @@ test('pagamentos pelo MCP: gera o Pix do pedido (copia e cola + link), reaprovei
   assert.equal((await callAs(FULL, 'cancelar_pedido', { numero: c.number, motivo: 'cliente desistiu' })).isError, false);
   assert.match((await callAs(FULL, 'link_pagamento', { numero: c.number })).text, /cancelado/);
   const acts = (await env.pools.platform.begin((q) => q`select action from audit_logs where store_id = ${B.storeId} and action like 'store_mcp.pix_%' order by at`)).map((r) => r.action);
-  assert.deepEqual(acts, ['store_mcp.pix_created', 'store_mcp.pix_reused', 'store_mcp.pix_reused']);
+  assert.deepEqual(acts, ['store_mcp.pix_created', 'store_mcp.pix_reused']);
+  const links = (await env.pools.platform.begin((q) => q`select action from audit_logs where store_id = ${B.storeId} and action like 'store_mcp.pay_link_%' order by at`)).map((r) => r.action);
+  assert.deepEqual(links, ['store_mcp.pay_link_reused']);
+});
+
+test('cancelar o pedido cancela o Pix que ainda não foi pago; se o gateway falhar, a cobrança continua vigiada', async () => {
+  const payOf = async (orderId: string) => (await env.pools.platform.begin((q) => q`select status, external_id from order_payments where order_id = ${orderId} order by created_at desc limit 1`))[0]!;
+  const o = await newOrder(adminB, B);
+  await callAs(FULL, 'gerar_pix', { numero: o.number });
+  const token = (data(await callAs(FULL, 'link_pagamento', { numero: o.number })).link as string).split('/').pop();
+  assert.equal((await callAs(FULL, 'cancelar_pedido', { numero: o.number, motivo: 'cliente desistiu' })).isError, false);
+  const p = await payOf(o.id);
+  assert.equal(p.status, 'cancelado'); assert.deepEqual(cancelled, [p.external_id]);                                      // cancelou no gateway e encerrou aqui
+  const page = JSON.parse((await env.app.inject({ method: 'GET', url: `/v1/track/${token}/pay` })).body);
+  assert.equal(page.cancelled, true); assert.equal(page.pix, null);                                                       // a página do link deixa de mostrar o QR
+  assert.match((await callAs(FULL, 'gerar_pix', { numero: o.number })).text, /cancelado/);
+
+  cancelFails = true;                                                                                                      // gateway fora do ar: o pedido cancela do mesmo jeito
+  const o2 = await newOrder(adminB, B); await callAs(FULL, 'gerar_pix', { numero: o2.number });
+  assert.equal((await adminB.post(`/v1/staff/orders/${o2.id}/status`, { to: 'cancelado', reason: 'teste' })).status, 200);   // pelo painel também
+  assert.equal((await payOf(o2.id)).status, 'pendente'); assert.equal(cancelled.length, 1);                               // segue pendente: a conciliação acusa se alguém pagar
+  cancelFails = false;
+});
+
+test('link de pagamento usa o endereço que abre hoje: domínio próprio, depois PREVIEW_DOMAIN, depois o subdomínio oficial', async () => {
+  const o = await newOrder(adminB, B);
+  const before = process.env.PREVIEW_DOMAIN;
+  try {
+    process.env.PREVIEW_DOMAIN = 'previa.exemplo.test';
+    assert.match(data(await callAs(FULL, 'link_pagamento', { numero: o.number })).link, /^https:\/\/mcp-b\.previa\.exemplo\.test\/pagar\/[0-9a-f]{64}$/);
+    await env.pools.platform.begin((q) => q`insert into store_domains (tenant_id, store_id, hostname, kind, verified_at) values (${B.tenantId}, ${B.storeId}, 'pedidos.lojab.test', 'custom', now())`);
+    assert.match(data(await callAs(FULL, 'link_pagamento', { numero: o.number })).link, /^https:\/\/pedidos\.lojab\.test\/pagar\//);
+  } finally { if (before === undefined) delete process.env.PREVIEW_DOMAIN; else process.env.PREVIEW_DOMAIN = before; }
+});
+
+test('link de pagamento com cartão online: a página recebe a chave pública, o cartão aprovado marca o pedido como pago e o Pix aberto deixa de valer', async () => {
+  const PUBLIC = 'TEST-abcdef12-3456-7890-abcd-ef1234567890';
+  assert.equal((await adminB.put('/v1/staff/gateways/mercadopago', { accessToken: 'TEST-1234567890123456-123456-abcdefabcdefabcdefabcdefabcdef-123456789', publicKey: PUBLIC })).status, 200);
+  const o = await newOrder(adminB, B);
+  await callAs(FULL, 'gerar_pix', { numero: o.number });
+  const [pixRow] = await env.pools.platform.begin((q) => q`select external_id from order_payments where order_id = ${o.id} and method = 'pix'`);
+  const first = data(await callAs(FULL, 'link_pagamento', { numero: o.number }));
+  assert.deepEqual(first.formas_de_pagamento, ['cartão', 'pix']); assert.ok(new Date(first.expira_em).getTime() > Date.now() + 30 * 60_000);   // cartão vale 60 min
+  assert.equal(data(await callAs(FULL, 'link_pagamento', { numero: o.number })).link, first.link);
+  const [n] = await env.pools.platform.begin((q) => q`select count(*)::int as n from order_payments where order_id = ${o.id} and method = 'card'`);
+  assert.equal(n!.n, 1);                                                                                                   // pedir o link de novo não abre outra cobrança
+  const token = (first.link as string).split('/').pop();
+  const page = JSON.parse((await env.app.inject({ method: 'GET', url: `/v1/track/${token}/pay` })).body);
+  assert.equal(page.card.publicKey, PUBLIC); assert.equal(page.card.amountCents, page.totalCents); assert.ok(page.pix.qrCode); assert.equal(JSON.stringify(page).includes('TEST-1234567890123456'), false);   // nunca o access token
+
+  const before = cancelled.length;
+  const paid = await env.app.inject({ method: 'POST', url: `/v1/track/${token}/card`, payload: { token: 'tok_cartao_teste', paymentMethodId: 'visa', installments: 1, payer: { email: 'cliente@exemplo.com' } } });
+  assert.equal(paid.statusCode, 200); assert.equal(JSON.parse(paid.body).status, 'aprovado');
+  const row = await orderOf(adminB, o.number);
+  assert.equal(row.paid, true); assert.equal(row.status, 'novo');                                                          // pago, segue no fluxo normal da loja
+  assert.deepEqual(cancelled.slice(before), [pixRow!.external_id]);                                                        // o Pix aberto foi cancelado: o cliente não paga duas vezes
+  const after = JSON.parse((await env.app.inject({ method: 'GET', url: `/v1/track/${token}/pay` })).body);
+  assert.equal(after.paid, true); assert.equal(after.pix, null); assert.equal(after.card, null);
+  assert.equal((await env.app.inject({ method: 'POST', url: `/v1/track/${token}/card`, payload: { token: 'tok_cartao_teste', paymentMethodId: 'visa', installments: 1, payer: { email: 'cliente@exemplo.com' } } })).statusCode, 409);   // não cobra de novo
+  assert.match((await callAs(FULL, 'link_pagamento', { numero: o.number })).text, /já está pago/);
 });
