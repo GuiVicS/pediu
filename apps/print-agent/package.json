@@ -9,6 +9,7 @@
   "scripts": {
     "start": "tsx src/cli.ts run",
     "build": "node build.mjs",
+    "build:sea": "node build.mjs --sea",
     "check": "tsc -p . --noEmit",
     "test": "node --import tsx --test test/*.test.ts"
   },

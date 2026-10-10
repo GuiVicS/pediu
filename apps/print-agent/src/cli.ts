@@ -5,7 +5,8 @@ import { autostart } from './autostart.js';
 import { defaultDrivers, discoverPrinters, printTo, testTicket, type Connection } from './drivers.js';
 import { startUi } from './ui.js';
 
-const VERSION = (() => { try { return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string; } catch { return '0.1.0'; } })();
+declare const __AGENT_VERSION__: string | undefined;   // injetado pelo build (build.mjs)
+const VERSION = typeof __AGENT_VERSION__ !== 'undefined' ? __AGENT_VERSION__ : (() => { try { return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string; } catch { return '0.1.0'; } })();
 const arg = (name: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : undefined; };
 const cmd = process.argv[2];
 

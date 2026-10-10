@@ -45,6 +45,10 @@ test('início automático: caminho e conteúdo por sistema, instalar/remover/sta
   const w = autostartContent('win32', 'C:\\Program Files\\nodejs\\node.exe', 'C:\\Pediu\\pediu-agent.mjs');
   assert.ok(w.includes('"C:\\Program Files\\nodejs\\node.exe"') && w.includes('ui --no-open') && w.includes('Run'));
   assert.ok(autostartContent('linux', '/usr/bin/node', '/opt/pediu-agent.mjs').includes('Exec="/usr/bin/node" "/opt/pediu-agent.mjs" ui --no-open'));
+  // executável único (.exe): sem script separado, o próprio executável é o comando
+  assert.ok(autostartContent('win32', 'C:\\Pediu\\PediuAgente.exe', null).includes('Run """C:\\Pediu\\PediuAgente.exe"" ui --no-open"'));
+  assert.ok(autostartContent('linux', '/opt/pediu', null).includes('Exec="/opt/pediu" ui --no-open'));
+  assert.ok(autostartContent('darwin', '/opt/pediu', null).includes('<string>/opt/pediu</string><string>ui</string><string>--no-open</string>'));
   const file = join(await mkdtemp(join(tmpdir(), 'pa-')), 'sub', 'pediu.desktop');
   assert.match(await autostart('status', file), /desligado/);
   await autostart('install', file, '/usr/bin/node', '/x/agent.mjs');
