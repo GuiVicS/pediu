@@ -6,6 +6,7 @@ import Overview from '@/pages/Overview';
 import { StoresList, StoreDetail } from '@/pages/Stores';
 import { Alerts, Audit, Health, Logs, Performance, Publications } from '@/pages/Monitoring';
 import { Banners } from '@/pages/Banners';
+import { PlatformDomains } from '@/pages/Domains';
 import { AiSettings, IfoodPlatform, MailSettings, McpTokens, Releases, StoreFooter, Subscriptions } from '@/pages/Business';
 
 function Gate() {
@@ -19,7 +20,7 @@ function Gate() {
         <Route path="lojas" element={<StoresList />} /><Route path="lojas/:id" element={<StoreDetail />} />
         <Route path="publicacoes" element={<Publications />} /><Route path="desempenho" element={<Performance />} />
         <Route path="alertas" element={<Alerts />} /><Route path="saude" element={<Health />} /><Route path="logs" element={<Logs />} /><Route path="auditoria" element={<Audit />} />
-        <Route path="assinaturas" element={<Subscriptions />} /><Route path="versoes" element={<Releases />} /><Route path="ifood" element={<IfoodPlatform />} /><Route path="rodape" element={<StoreFooter />} /><Route path="ia" element={<AiSettings />} /><Route path="email" element={<MailSettings />} /><Route path="banners" element={<Banners />} /><Route path="mcp" element={<McpTokens />} />
+        <Route path="assinaturas" element={<Subscriptions />} /><Route path="versoes" element={<Releases />} /><Route path="ifood" element={<IfoodPlatform />} /><Route path="rodape" element={<StoreFooter />} /><Route path="ia" element={<AiSettings />} /><Route path="email" element={<MailSettings />} /><Route path="banners" element={<Banners />} /><Route path="mcp" element={<McpTokens />} /><Route path="dominios" element={<PlatformDomains />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

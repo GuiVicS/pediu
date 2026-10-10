@@ -63,3 +63,36 @@ test('link de prévia: em desenvolvimento grava o cookie e tira o código da URL
   const prod = await get(app(), `/?previa=${code}`);
   assert.equal(prod.statusCode, 200); assert.equal(prod.headers['set-cookie'], undefined); assert.equal(prod.headers['x-robots-tag'], undefined);
 });
+
+test('endereço da plataforma (cadastrado no super admin) vai inteiro para a API ou o MCP; endereço de loja continua isolado', async () => {
+  const { createServer } = await import('node:http');
+  const upstream = (name: string) => new Promise<{ url: string; close(): void }>((resolve) => {
+    const s = createServer((req, res) => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ from: name, url: req.url, host: req.headers['x-forwarded-host'] })); });
+    s.listen(0, '127.0.0.1', () => resolve({ url: `http://127.0.0.1:${(s.address() as { port: number }).port}`, close: () => s.close() }));
+  });
+  const api = await upstream('api'), mcp = await upstream('mcp');
+  const dir = mkdtempSync(join(tmpdir(), 'edge-'));
+  mkdirSync(join(dir, 'web', 'builtin'), { recursive: true });
+  writeFileSync(join(dir, 'web', 'builtin', 'index.html'), '<!doctype html><html><head><!--pediu-head--></head><body></body></html>');
+  let hosts = [{ hostname: 'delivery.serafim.test', role: 'admin' }, { hostname: 'ia.serafim.test', role: 'mcp' }];
+  const fetchImpl = (async (u: string) => String(u).includes('/v1/edge/platform-hosts') ? new Response(JSON.stringify({ hosts }), { status: 200 }) : new Response(JSON.stringify(store), { status: 200 })) as typeof fetch;
+  const a = buildEdge({ apiUrl: api.url, mcpUrl: mcp.url, edgeSecret: 's', builtinDir: dir, cacheDir: join(dir, 'cache'), fetchImpl } as never);
+  try {
+    await a.ready();
+    const call = async (host: string, url: string, method: 'GET' | 'POST' = 'GET') => { const r = await a.inject({ method, url, headers: { host } }); return { status: r.statusCode, body: (() => { try { return r.json(); } catch { return r.body; } })() }; };
+    // super admin: a tela (/) e as rotas /v1/platform chegam à API, com o endereço original
+    assert.deepEqual((await call('delivery.serafim.test', '/')).body, { from: 'api', url: '/', host: 'delivery.serafim.test' });
+    assert.deepEqual((await call('delivery.serafim.test', '/v1/platform/stores?x=1')).body, { from: 'api', url: '/v1/platform/stores?x=1', host: 'delivery.serafim.test' });
+    assert.equal((await call('delivery.serafim.test', '/v1/webhooks/mercadopago', 'POST')).body.from, 'api');
+    assert.deepEqual((await call('ia.serafim.test', '/mcp', 'POST')).body, { from: 'mcp', url: '/mcp', host: 'ia.serafim.test' });
+    // loja: rotas da plataforma seguem bloqueadas, inclusive tentando o prefixo interno por fora
+    assert.equal((await call('burger-lab.pediu.test', '/v1/platform/stores')).status, 404);
+    assert.equal((await call('burger-lab.pediu.test', '/__plataforma/api/v1/platform/stores')).status, 404);
+    assert.equal((await call('burger-lab.pediu.test', '/__plataforma/mcp/mcp', 'POST')).status, 404);
+    assert.equal((await call('delivery.serafim.test', '/__plataforma/api/v1/platform/stores')).status, 404);
+    assert.match(String((await call('burger-lab.pediu.test', '/')).body), /<!doctype html>/);
+    // endereço removido no super admin deixa de ser plataforma na próxima consulta
+    hosts = []; await (a as unknown as { refreshPlatformHosts(): Promise<void> }).refreshPlatformHosts();
+    assert.match(String((await call('delivery.serafim.test', '/')).body), /<!doctype html>/);
+  } finally { await a.close(); api.close(); mcp.close(); }
+});

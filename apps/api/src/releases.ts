@@ -7,6 +7,7 @@ import type { Ctx } from './context.js';
 import { audit, fail, parse } from './http.js';
 import { guard } from './session.js';
 import { staffGuard } from './staff.js';
+import { platformRoleOf, storeBySubdomain } from './platformDomains.js';
 
 const uuid = z.string().uuid();
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
@@ -128,7 +129,8 @@ export function releaseRoutes(app: FastifyInstance, ctx: Ctx, dns: DnsLookup = r
     if (!secret || !safeEqual(String(req.headers['x-edge-secret'] ?? ''), secret)) return fail(reply, 401, 'unauthenticated', 'Segredo do edge inválido.');
     const host = parse(z.string().min(3).max(253), (req.query as { host?: string }).host, reply); if (!host) return;
     return withPlatform(ctx.pools, async (q) => {
-      const [h] = await q`select s.id, s.slug, s.name, s.status from stores s join store_domains d on d.store_id = s.id where d.hostname = ${host.toLowerCase()} and d.verified_at is not null and s.status <> 'arquivada'`;
+      const h = (await q`select s.id, s.slug, s.name, s.status from stores s join store_domains d on d.store_id = s.id where d.hostname = ${host.toLowerCase()} and d.verified_at is not null and s.status <> 'arquivada'`)[0]
+        ?? await storeBySubdomain(q, host.toLowerCase());      // slug.dominio-base cadastrado no super admin
       if (!h) return fail(reply, 404, 'not_found', 'Domínio desconhecido.');
       const v = await resolveVersion(q, h.id, 'web');
       const [theme] = await q`select data from store_themes where store_id = ${h.id}`;
@@ -142,7 +144,8 @@ export function releaseRoutes(app: FastifyInstance, ctx: Ctx, dns: DnsLookup = r
     if (secret && !safeEqual(String(req.headers['x-edge-secret'] ?? (req.query as { secret?: string }).secret ?? ''), secret)) return fail(reply, 401, 'unauthenticated', 'Segredo do edge inválido.');
     const domain = String((req.query as { domain?: string }).domain ?? '').toLowerCase();
     if (!HOST_RE.test(domain)) return fail(reply, 404, 'not_found', 'Domínio inválido.');
-    const ok = await withPlatform(ctx.pools, async (q) => !!(await q`select 1 as x from store_domains d join stores s on s.id = d.store_id where d.hostname = ${domain} and d.verified_at is not null and s.status <> 'arquivada'`)[0]);
+    const ok = await withPlatform(ctx.pools, async (q) => !!(await q`select 1 as x from store_domains d join stores s on s.id = d.store_id where d.hostname = ${domain} and d.verified_at is not null and s.status <> 'arquivada'`)[0]
+      || !!(await platformRoleOf(q, domain)) || !!(await storeBySubdomain(q, domain)));
     return ok ? { ok: true } : fail(reply, 404, 'not_found', 'Domínio não verificado.');
   });
 

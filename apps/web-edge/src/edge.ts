@@ -6,6 +6,8 @@ import httpProxy from '@fastify/http-proxy';
 export interface Resolved { storeId: string; slug: string; name: string; status: string; version: string | null; source: string; supportEnded: boolean; themeColor: string | null; iconUrl: string | null; description: string | null; title: string | null }
 export interface EdgeConfig {
   apiUrl: string; edgeSecret: string;
+  // serviço do MCP da plataforma (para os endereços cadastrados com o papel 'mcp' no super admin)
+  mcpUrl?: string;
   // pasta com os bundles publicados, no formato: RELEASES_DIR/web/VERSAO/arquivos
   releasesDir?: string;
   // ou uma URL base (Supabase Storage/CDN) de onde o edge baixa e guarda em cache: BASE/web/VERSAO/arquivos
@@ -48,6 +50,24 @@ export class Resolver {
   }
   clear() { this.cache.clear(); }
 }
+
+/** Endereços da plataforma cadastrados no super admin (super admin, API, MCP). O edge consulta a API de tempos em tempos e guarda em memória:
+ *  a decisão "é loja ou é plataforma?" acontece antes das rotas e precisa ser imediata. Se a API cair, vale a última lista conhecida. */
+export class PlatformHosts {
+  private map = new Map<string, string>();
+  constructor(private cfg: EdgeConfig) {}
+  roleOf(host: string): string | null { return this.map.get(host.toLowerCase()) ?? null; }
+  async refresh(): Promise<void> {
+    try {
+      const res = await (this.cfg.fetchImpl ?? fetch)(`${this.cfg.apiUrl}/v1/edge/platform-hosts`, { headers: { 'x-edge-secret': this.cfg.edgeSecret }, signal: AbortSignal.timeout(5000) });
+      if (!res.ok) return;
+      const d = (await res.json()) as { hosts?: { hostname: string; role: string }[] };
+      if (Array.isArray(d.hosts)) this.map = new Map(d.hosts.map((h) => [String(h.hostname).toLowerCase(), String(h.role)]));
+    } catch { /* API fora do ar: mantém a lista anterior */ }
+  }
+}
+/** Prefixo interno para onde vão os pedidos de um endereço da plataforma. Nunca aceito vindo de fora. */
+const INTERNAL = '/__plataforma';
 
 export class Bundles {
   constructor(private cfg: EdgeConfig) {}
@@ -118,10 +138,28 @@ const PREVIEW_PARAM = 'previa', PREVIEW_COOKIE = 'pediu_previa';
 
 const NOT_FOUND_PAGE = (host: string) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Loja não encontrada</title><body style="font:16px system-ui;display:grid;place-items:center;min-height:100vh;margin:0;background:#f6f8fb;color:#0f172a"><div style="text-align:center;padding:24px"><h1 style="margin:0 0 8px">Loja não encontrada</h1><p style="color:#64748b">O endereço <b>${esc(host)}</b> não está vinculado a nenhuma loja.</p></div>`;
 
-export function buildEdge(cfg: EdgeConfig, opts: { logger?: boolean } = {}): FastifyInstance {
-  const app = Fastify({ logger: opts.logger ?? false, trustProxy: true });
-  const resolver = new Resolver(cfg), bundles = new Bundles(cfg);
+export function buildEdge(cfg: EdgeConfig, opts: { logger?: boolean; platformRefreshMs?: number } = {}): FastifyInstance {
   const hostOf = (req: { headers: Record<string, unknown>; hostname?: string }) => String(req.headers['x-forwarded-host'] ?? req.headers.host ?? req.hostname ?? '').split(',')[0]!.split(':')[0]!.trim().toLowerCase();
+  const platform = new PlatformHosts(cfg);
+  const app = Fastify({
+    logger: opts.logger ?? false, trustProxy: true,
+    // endereço da plataforma (super admin, API, MCP): o pedido inteiro vai para o serviço certo, sem passar pelas regras de loja
+    rewriteUrl: (req) => {
+      const url = req.url ?? '/';
+      if (url.startsWith(INTERNAL)) return '/v1/edge/bloqueado';
+      const role = platform.roleOf(hostOf(req as never));
+      return role ? `${INTERNAL}/${role === 'mcp' ? 'mcp' : 'api'}${url}` : url;
+    },
+  });
+  const resolver = new Resolver(cfg), bundles = new Bundles(cfg);
+  const timer = setInterval(() => void platform.refresh(), opts.platformRefreshMs ?? 15_000); timer.unref();
+  app.addHook('onReady', () => platform.refresh());
+  app.addHook('onClose', async () => clearInterval(timer));
+  app.decorate('refreshPlatformHosts', () => platform.refresh());
+  const fwd = { rewriteRequestHeaders: (req: { headers: Record<string, unknown> }, headers: Record<string, unknown>) => ({ ...headers, 'x-forwarded-host': String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '') }) };
+  app.register(httpProxy, { upstream: cfg.apiUrl, prefix: `${INTERNAL}/api`, rewritePrefix: '', replyOptions: fwd as never });
+  if (cfg.mcpUrl) app.register(httpProxy, { upstream: cfg.mcpUrl, prefix: `${INTERNAL}/mcp`, rewritePrefix: '', replyOptions: fwd as never });
+  else app.all(`${INTERNAL}/mcp/*`, async (_req, reply) => reply.code(503).send({ error: { code: 'mcp_unavailable', message: 'O endereço do MCP não está configurado neste servidor (MCP_URL).' } }));
 
   app.get('/health', async () => ({ ok: true }));
   // a API e os uploads passam pelo mesmo domínio da loja (cookie SameSite=Strict de login precisa de mesma origem)
