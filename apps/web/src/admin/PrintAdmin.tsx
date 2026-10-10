@@ -9,6 +9,10 @@ import { Field, Modal, Toggle, cx } from '@/ui/kit';
 import { ErrorBox, Spinner, useAction } from '@/ui/misc';
 import { PageHeader, useToast } from './AdminUI';
 import { PrintGuide } from './PrintGuide';
+import { useSession } from '@/lib/session';
+
+/** Tela local do Pediu Agente (só existe no computador onde ele está aberto). */
+const AGENT_UI = 'http://127.0.0.1:4710/';
 
 interface Discovered { name: string; kind?: string; detail?: string }
 interface Agent { id: string; name: string; platform: string | null; version: string | null; last_seen_at: string | null; online: boolean; discovered: Discovered[] }
@@ -34,6 +38,7 @@ export default function PrintAdmin() {
   const [preview, setPreview] = useState<Job | null>(null);
   const toast = useToast();
   const act = useAction();
+  const { me } = useSession();
 
   const load = useCallback(async () => setOv(await get<Overview>('/v1/staff/print/overview')), []);
   const pairNow = () => act.run(async () => setPairing(await post('/v1/staff/print/pairing')));
@@ -49,7 +54,11 @@ export default function PrintAdmin() {
 
   useEffect(() => { void load(); }, [load]);
   const agentCount = ov?.agents.length;
-  useEffect(() => { setPairing(null); }, [agentCount]);                           // agente novo pareado: fecha o código
+  const [seen, setSeen] = useState<number | undefined>(undefined);
+  useEffect(() => {                                                              // agente novo pareado: fecha a janela e avisa
+    if (agentCount !== undefined && seen !== undefined && agentCount > seen && pairing) toast('Computador conectado! Agora é só puxar as impressoras.');
+    setPairing(null); setSeen(agentCount);
+  }, [agentCount]);   // eslint-disable-line react-hooks/exhaustive-deps
   useStream((e) => { if (e.type === 'print' || e.type === 'agent') void load(); }, load, 10_000);
   if (!ov || !zones.ready) return <Spinner />;
 
@@ -77,8 +86,8 @@ export default function PrintAdmin() {
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="card space-y-3 p-4">
           <div className="flex items-center justify-between"><h2 className="flex items-center gap-2 font-semibold"><Monitor size={16} /> Agentes de impressão</h2>
-            <button className="btn" onClick={pairNow}><Plug size={14} /> Parear agente</button></div>
-          {ov.agents.length === 0 && <p className="text-sm text-muted-foreground">Nenhum agente pareado. Instale o <b>Pediu Agente</b> no computador onde ficam as impressoras e pareie com o código.</p>}
+            <button className="btn" onClick={pairNow}><Plug size={14} /> Conectar computador</button></div>
+          {ov.agents.length === 0 && <p className="text-sm text-muted-foreground">Nenhum agente pareado. Abra o <b>Pediu Agente</b> no computador das impressoras e clique em <b>Conectar computador</b>.</p>}
           {ov.agents.map((a) => (
             <div key={a.id} className="rounded-ui-sm border border-border p-3 text-sm">
               <div className="flex items-center gap-2"><span className={cx('h-2.5 w-2.5 rounded-full', a.online ? 'bg-green-500' : 'bg-slate-400')} /><b className="flex-1">{a.name}</b>
@@ -171,15 +180,25 @@ export default function PrintAdmin() {
         )}
       </section>
 
-      <Modal open={!!pairing} onClose={() => setPairing(null)} title="Parear agente de impressão">
-        {pairing && <div className="space-y-3 text-sm">
-          <p>No computador das impressoras, abra a tela do <b>Pediu Agente</b> e preencha:</p>
-          <dl className="space-y-1 rounded-ui bg-muted p-3">
-            <div className="flex items-center justify-between gap-2"><dt className="text-muted-foreground">Endereço da loja</dt><dd className="flex items-center gap-1.5"><b>{location.origin}</b><button className="btn-ghost !p-1.5" aria-label="Copiar endereço" onClick={() => navigator.clipboard.writeText(location.origin)}><Copy size={13} /></button></dd></div>
-            <div className="flex items-center justify-between gap-2"><dt className="text-muted-foreground">Código</dt><dd className="flex items-center gap-2"><span className="text-3xl font-extrabold tracking-[0.3em]">{pairing.code}</span><button className="btn-ghost !p-1.5" aria-label="Copiar código" onClick={() => navigator.clipboard.writeText(pairing.code)}><Copy size={13} /></button></dd></div>
-          </dl>
-          <p className="text-xs text-muted-foreground">O código vale por 10 minutos e só pode ser usado uma vez. Você só pareia uma vez: depois o agente fica conectado sozinho, mesmo se o computador reiniciar (ligue “Iniciar junto com o computador” na tela do agente). Esta janela fecha sozinha quando o agente conectar.</p>
-          <details className="text-xs"><summary className="cursor-pointer text-muted-foreground">Prefere pelo terminal?</summary><pre className="mt-2 overflow-x-auto rounded-ui-xs bg-slate-900 p-3 text-slate-100">node pediu-agent.mjs pair --url {location.origin} --code {pairing.code}</pre></details>
+      <Modal open={!!pairing} onClose={() => setPairing(null)} title="Conectar o computador das impressoras">
+        {pairing && <div className="space-y-4 text-sm">
+          <ol className="space-y-3">
+            <li className="flex items-start gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-base font-bold text-primary-foreground">1</span><div><b className="block text-base">Abra o Pediu Agente neste computador</b><span className="text-muted-foreground">Dois cliques no <b>pediu-agente.exe</b>. Se ele já está aberto, pule para o passo 2.</span></div></li>
+            <li className="flex items-start gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-base font-bold text-primary-foreground">2</span><div className="min-w-0 flex-1"><b className="block text-base">Clique no botão azul</b><span className="text-muted-foreground">Abre a tela do agente. Lá, clique em <b>Conectar</b> e pronto.</span></div></li>
+          </ol>
+          <a className="btn w-full justify-center !py-4 !text-lg" target="_blank" rel="noopener noreferrer"
+            href={`${AGENT_UI}#conectar?${new URLSearchParams({ url: location.origin, code: pairing.code, loja: me?.store?.name ?? '' })}`}><Plug size={20} /> Conectar este computador</a>
+          <p className="flex items-center justify-center gap-2 text-xs text-muted-foreground"><Loader2 size={13} className="animate-spin" /> Esperando o agente conectar… esta janela fecha sozinha.</p>
+          <details className="rounded-ui-sm border border-border p-3 text-sm">
+            <summary className="cursor-pointer font-medium">Não abriu, ou o agente está em outro computador? Conectar com código</summary>
+            <p className="mt-3 text-muted-foreground">Na tela do <b>Pediu Agente</b>, abra <b>Conectar digitando o código</b> e preencha:</p>
+            <dl className="mt-2 space-y-1 rounded-ui bg-muted p-3">
+              <div className="flex items-center justify-between gap-2"><dt className="text-muted-foreground">Endereço da loja</dt><dd className="flex items-center gap-1.5"><b>{location.origin}</b><button className="btn-ghost !p-1.5" aria-label="Copiar endereço" onClick={() => navigator.clipboard.writeText(location.origin)}><Copy size={13} /></button></dd></div>
+              <div className="flex items-center justify-between gap-2"><dt className="text-muted-foreground">Código</dt><dd className="flex items-center gap-2"><span className="text-3xl font-extrabold tracking-[0.3em]">{pairing.code}</span><button className="btn-ghost !p-1.5" aria-label="Copiar código" onClick={() => navigator.clipboard.writeText(pairing.code)}><Copy size={13} /></button></dd></div>
+            </dl>
+            <p className="mt-2 text-xs text-muted-foreground">Se o navegador mostrar “não é possível acessar esse site”, o agente não está aberto neste computador: abra o <b>pediu-agente.exe</b> e clique no botão azul de novo. Pelo terminal: <code>node pediu-agent.mjs pair --url {location.origin} --code {pairing.code}</code></p>
+          </details>
+          <p className="text-xs text-muted-foreground">O código por trás do botão vale 10 minutos e só serve uma vez. Você só conecta uma vez: depois o agente liga sozinho junto com o computador.</p>
         </div>}
       </Modal>
 
