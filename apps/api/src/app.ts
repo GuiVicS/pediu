@@ -22,6 +22,7 @@ import { pdvRoutes } from './pdv.js';
 import { printingRoutes } from './printing.js';
 import { realtimeRoutes } from './realtime.js';
 import { releaseRoutes } from './releases.js';
+import { platformDomainRoutes } from './platformDomains.js';
 import { appRoutes } from './apps.js';
 import { totemRoutes } from './totem.js';
 import { uploadRoutes } from './uploads.js';
@@ -99,6 +100,7 @@ export function buildApp(ctx: Ctx, opts: { trustProxy?: boolean; logger?: boolea
   pdvRoutes(app, ctx);
   ifoodRoutes(app, ctx);
   releaseRoutes(app, ctx);
+  platformDomainRoutes(app, ctx);
 
   // tela do super admin (build do apps/platform) servida pela própria API: mesma origem, cookie SameSite=Strict funciona sem CORS
   if (opts.platformUiDir && existsSync(opts.platformUiDir)) {
